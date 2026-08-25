@@ -1,6 +1,8 @@
 import os
 import logging
 import asyncio
+import random
+import string
 import discord
 from discord.ext import commands
 from discord import ui
@@ -14,6 +16,12 @@ logging.basicConfig(
     handlers=[logging.StreamHandler()]
 )
 logger = logging.getLogger("HakerolandiaShop")
+
+# Globalny magazyn aktywnych kodów zniżkowych (kod: zniżka_w_procentach)
+# Wstępnie dodany stały kod "40-osob" dający 5% zniżki
+AKTYWNE_KODY = {
+    "40-osob": 5
+}
 
 # ==============================================================================
 # 1. WERYFIKACJA (CAPTCHA)
@@ -96,7 +104,7 @@ class OpiniePanelView(ui.View):
 
 
 # ==============================================================================
-# 4. FORMULARZ ZAMÓWIENIA (MODAL) Z UWAGAMI
+# 4. FORMULARZ ZAMÓWIENIA (MODAL) Z UWAGAMI I KODEM RABATOWYM
 # ==============================================================================
 class ZamowienieModal(ui.Modal, title="HAKEROLANDIA — FORMULARZ ZAMÓWIENIA"):
     def __init__(self, produkt: str, cena_jednostkowa: float, ilosc: int):
@@ -129,7 +137,7 @@ class ZamowienieModal(ui.Modal, title="HAKEROLANDIA — FORMULARZ ZAMÓWIENIA"):
     
     kod_rabatowy = ui.TextInput(
         label="CZY POSIADASZ KOD ZNIŻKOWY:",
-        placeholder="Jeżeli nie posiadasz, zostaw to pole puste.",
+        placeholder="Wpisz np. 40-osob lub inny kod rabatowy.",
         required=False,
         max_length=50
     )
@@ -142,10 +150,35 @@ class ZamowienieModal(ui.Modal, title="HAKEROLANDIA — FORMULARZ ZAMÓWIENIA"):
     )
 
     async def on_submit(self, interaction: discord.Interaction):
-        cena_calkowita = self.cena_jednostkowa * self.ilosc
-        rabat = self.kod_rabatowy.value if self.kod_rabatowy.value else "Nie podano."
+        cena_bazowa = self.cena_jednostkowa * self.ilosc
+        rabat_tekst = self.kod_rabatowy.value.strip() if self.kod_rabatowy.value else ""
+        znizka_procent = 0
+
+        # Weryfikacja kodu zniżkowego (obsługuje wielkość liter za sprawą .lower())
+        if rabat_tekst:
+            # Sprawdzenie w słowniku (uwzględniając ewentualne wpisanie małych/dużych liter)
+            dopasowany_kod = None
+            for k in AKTYWNE_KODY:
+                if k.lower() == rabat_tekst.lower():
+                    dopasowany_kod = k
+                    break
+
+            if dopasowany_kod:
+                znizka_procent = AKTYWNE_KODY[dopasowany_kod]
+                rabat_tekst = dopasowany_kod
+            else:
+                await interaction.response.send_message(
+                    f"⚠️ Podany kod rabatowy **`{rabat_tekst}`** jest nieprawidłowy lub wygasł. Zamówienie zostanie zrealizowane bez zniżki.",
+                    ephemeral=True
+                )
+
+        # Obliczenie ostatecznej ceny po uwzględnieniu zniżki
+        rabat_kwotowo = (cena_bazowa * znizka_procent) / 100
+        cena_calkowita = cena_bazowa - rabat_kwotowo
+
         polecajacy = self.kod_polecajacy.value if self.kod_polecajacy.value else "Nie podano."
         tekst_uwag = self.uwagi.value if self.uwagi.value else "Brak uwag."
+        informacja_o_rabacie = f"-{znizka_procent}% ({rabat_tekst})" if znizka_procent > 0 else "Brak"
 
         view = PodsumowanieZakupuView(
             produkt=self.produkt,
@@ -154,17 +187,17 @@ class ZamowienieModal(ui.Modal, title="HAKEROLANDIA — FORMULARZ ZAMÓWIENIA"):
             nick=self.discord_nick.value,
             platnosc=self.platnosc.value,
             uwagi=tekst_uwag,
-            rabat=rabat,
+            rabat=informacja_o_rabacie,
             polecajacy=polecajacy
         )
 
         tekst = (
             f"🛒 **HAKEROLANDIA — PODSUMOWANIE ZAMÓWIENIA**\n"
             f"Poniżej dostępne jest kompletne podsumowanie zamówienia wg. podanych przez Ciebie informacji.\n\n"
-            f"• **{self.ilosc}x {self.produkt}** — **{cena_calkowita:.2f} PLN** [{self.cena_jednostkowa:.2f} PLN/szt.]\n\n"
+            f"• **{self.ilosc}x {self.produkt}** — **{cena_bazowa:.2f} PLN** [{self.cena_jednostkowa:.2f} PLN/szt.]\n"
+            f"• Zniżka: **{informacja_o_rabacie}**\n\n"
             f"Uwagi: {tekst_uwag}\n"
-            f"Kod zniżkowy: {rabat}\n"
-            f"Cena końcowa: **{cena_calkowita:.2f} PLN**\n\n"
+            f"Cena końcowa do zapłaty: **{cena_calkowita:.2f} PLN**\n\n"
             f"**Wszystko się zgadza?** — Użyj przycisku poniżej i dokonaj płatności."
         )
         await interaction.response.send_message(tekst, view=view, ephemeral=True)
@@ -296,8 +329,8 @@ class PanelGlownyView(ui.View):
     @ui.button(label="ZŁÓŻ ZAMÓWIENIE", style=discord.ButtonStyle.green, custom_id="btn_hakerolandia_zlozo_zamowienie", emoji="🛒")
     async def zlozo_zamowienie_btn(self, interaction: discord.Interaction, button: ui.Button):
         await interaction.response.send_message(
-            "🛒 **HAKEROLANDIA — WYBIERZ PAKIET**\n"
-            "Wybierz interesujący Cię pakiet z menu poniżej:",
+            f"🛒 **HAKEROLANDIA — WYBIERZ PAKIET**\n"
+            f"Wybierz interesujący Cię pakiet z menu poniżej:",
             view=WyborProduktuSelectView(),
             ephemeral=True
         )
@@ -369,6 +402,30 @@ async def wyslij_panel(interaction: discord.Interaction):
 
     await interaction.channel.send(embed=embed, view=PanelGlownyView())
     await interaction.response.send_message("✅ Pomyślnie wysłano panel sklepu Hakerolandia!", ephemeral=True)
+
+
+@bot.tree.command(name="kod-losuj", description="Losuje zniżkę od 5% do 20% i rejestruje aktywny kod (Tylko Admin)")
+async def kod_losuj(interaction: discord.Interaction):
+    if not interaction.user.guild_permissions.administrator:
+        await interaction.response.send_message("❌ Brak uprawnień administratora!", ephemeral=True)
+        return
+
+    znizka = random.randint(5, 20)
+    kod = "PROMO-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+    
+    # Zapisz losowy kod w słowniku bota
+    AKTYWNE_KODY[kod] = znizka
+
+    embed = discord.Embed(
+        title="🎲 WYLOSOWANO NOWY KOD ZNIŻKOWY",
+        description=f"Pomyślnie wygenerowano i dodano kod do systemu bota!",
+        color=discord.Color.green()
+    )
+    embed.add_field(name="Kod rabatowy", value=f"`{kod}`", inline=True)
+    embed.add_field(name="Wysokość zniżki", value=f"**-{znizka}%**", inline=True)
+    embed.set_footer(text="Klient może teraz wpisać ten kod podczas składania zamówienia.")
+
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 @bot.tree.command(name="cennik", description="Wyświetla oficjalny cennik Hakerolandia")
