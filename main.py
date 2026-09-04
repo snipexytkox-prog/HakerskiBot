@@ -45,7 +45,7 @@ class CaptchaView(ui.View):
 
     @ui.button(label="ZWERYFIKUJ SIĘ (CAPTCHA)", style=discord.ButtonStyle.green, custom_id="btn_captcha_hakerolandia")
     async def verify(self, interaction: discord.Interaction, button: ui.Button):
-        role = discord.utils.get(interaction.guild.roles, name="Zweryfikowany")
+        role = discord.utils.get(interaction.guild.roles, name="✅ • Zweryfikowany")
         if not role:
             await interaction.response.send_message("❌ Błąd: Brak roli '✅ • Zweryfikowany' na serwerze.", ephemeral=True)
             return
