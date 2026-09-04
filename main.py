@@ -479,7 +479,7 @@ async def wyslij_strone(interaction: discord.Interaction):
         return
 
     embed = discord.Embed(
-        title="Hakerolandia.pl × OFICJALNA STRONA WWW",
+        title="Hakerolandia × OFICJALNA STRONA",
         description=(
             "➡️ **Zapraszamy do odwiedzenia naszej oficjalnej strony internetowej!**\n\n"
             "➡️ Znajdziesz tam pełną ofertę naszych usług, szczegółowy cennik oraz aktualności.\n\n"
