@@ -26,10 +26,10 @@ AKTYWNE_KODY = {
 # ==============================================================================
 # KONFIGURACJA POWIADOMIEŃ YOUTUBE (W STYLU KOYA)
 # ==============================================================================
-# 1. Wpisz tutaj ID kanału na Discordzie (kliknij prawym na kanał -> Kopiuj identyfikator)
-KANAL_FILMY_ID = 1532729202007216140  # <--- Zmień te cyfry na ID swojego kanału!
+# ID Twojego kanału na Discordzie (nowe filmy)
+KANAL_FILMY_ID = 1532729202007216140
 
-# 2. Twój adres RSS z Twoim ID YouTube (już wpisane poprawnie!)
+# Twój adres RSS z Twoim ID YouTube
 YOUTUBE_RSS_URL = "https://www.youtube.com/feeds/videos.xml?channel_id=UCCelA7w6rz4fDhrPG2DbY1A"
 
 # Zmienna pomocnicza do śledzenia ostatnio wysłanego filmu
@@ -347,7 +347,7 @@ class PanelGlownyView(ui.View):
 
 
 # ==============================================================================
-# 9. WIDOK PRZYCISKU POWIADOMIENIA O FILMIE
+# 9. WIDOK PRZYCISKÓW (YOUTUBE ORAZ STRONA WWW)
 # ==============================================================================
 class YouTubeButtonView(ui.View):
     def __init__(self, link: str):
@@ -357,6 +357,16 @@ class YouTubeButtonView(ui.View):
             style=discord.ButtonStyle.link, 
             url=link, 
             emoji="🎬"
+        ))
+
+class StronaButtonView(ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.add_item(ui.Button(
+            label="Odwiedź hakerroblox.gamer.gd", 
+            style=discord.ButtonStyle.link, 
+            url="https://hakerroblox.gamer.gd", 
+            emoji="🌐"
         ))
 
 
@@ -373,6 +383,7 @@ class HakerolandiaBot(commands.Bot):
         self.add_view(PanelGlownyView())
         self.add_view(CaptchaView())
         self.add_view(OpiniePanelView())
+        self.add_view(StronaButtonView())
         
         # Uruchomienie automatycznego sprawdzania YouTube w tle
         self.sprawdz_youtube.start()
@@ -459,6 +470,26 @@ async def wyslij_panel(interaction: discord.Interaction):
 
     await interaction.channel.send(embed=embed, view=PanelGlownyView())
     await interaction.response.send_message("✅ Pomyślnie wysłano panel sklepu Hakerolandia!", ephemeral=True)
+
+
+@bot.tree.command(name="wyslij-strone", description="Wysyła informację o oficjalnej stronie internetowej Hakerolandia (Tylko Admin)")
+async def wyslij_strone(interaction: discord.Interaction):
+    if not interaction.user.guild_permissions.administrator:
+        await interaction.response.send_message("❌ Brak uprawnień administratora!", ephemeral=True)
+        return
+
+    embed = discord.Embed(
+        title="Hakerolandia.pl × OFICJALNA STRONA WWW",
+        description=(
+            "➡️ **Zapraszamy do odwiedzenia naszej oficjalnej strony internetowej!**\n\n"
+            "➡️ Znajdziesz tam pełną ofertę naszych usług, szczegółowy cennik oraz aktualności.\n\n"
+            "➡️ **Oficjalny adres:** https://hakerroblox.gamer.gd"
+        ),
+        color=discord.Color.blue()
+    )
+
+    await interaction.channel.send(embed=embed, view=StronaButtonView())
+    await interaction.response.send_message("✅ Pomyślnie wysłano panel strony internetowej!", ephemeral=True)
 
 
 @bot.tree.command(name="kod-losuj", description="Losuje zniżkę od 5% do 20% i rejestruje aktywny kod (Tylko Admin)")
