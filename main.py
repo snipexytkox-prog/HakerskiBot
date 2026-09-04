@@ -4,8 +4,9 @@ import asyncio
 import random
 import string
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 from discord import ui
+import feedparser
 
 # ==============================================================================
 # KONFIGURACJA LOGOWANIA
@@ -17,11 +18,23 @@ logging.basicConfig(
 )
 logger = logging.getLogger("HakerolandiaShop")
 
-# Globalny magazyn aktywnych kodów zniżkowych (kod: zniżka_w_procentach)
-# Wstępnie dodany stały kod "40-osob" dający 5% zniżki
+# Globalny magazyn aktywnych kodów zniżkowych
 AKTYWNE_KODY = {
     "40-osob": 5
 }
+
+# ==============================================================================
+# KONFIGURACJA POWIADOMIEŃ YOUTUBE (W STYLU KOYA)
+# ==============================================================================
+# 1. Wpisz tutaj ID kanału na Discordzie (kliknij prawym na kanał -> Kopiuj identyfikator)
+KANAL_FILMY_ID = 1532729202007216140  # <--- Zmień te cyfry na ID swojego kanału!
+
+# 2. Twój adres RSS z Twoim ID YouTube (już wpisane poprawnie!)
+YOUTUBE_RSS_URL = "https://www.youtube.com/feeds/videos.xml?channel_id=UCCelA7w6rz4fDhrPG2DbY1A"
+
+# Zmienna pomocnicza do śledzenia ostatnio wysłanego filmu
+ostatnio_wyslany_id = None
+
 
 # ==============================================================================
 # 1. WERYFIKACJA (CAPTCHA)
@@ -154,9 +167,7 @@ class ZamowienieModal(ui.Modal, title="HAKEROLANDIA — FORMULARZ ZAMÓWIENIA"):
         rabat_tekst = self.kod_rabatowy.value.strip() if self.kod_rabatowy.value else ""
         znizka_procent = 0
 
-        # Weryfikacja kodu zniżkowego (obsługuje wielkość liter za sprawą .lower())
         if rabat_tekst:
-            # Sprawdzenie w słowniku (uwzględniając ewentualne wpisanie małych/dużych liter)
             dopasowany_kod = None
             for k in AKTYWNE_KODY:
                 if k.lower() == rabat_tekst.lower():
@@ -172,7 +183,6 @@ class ZamowienieModal(ui.Modal, title="HAKEROLANDIA — FORMULARZ ZAMÓWIENIA"):
                     ephemeral=True
                 )
 
-        # Obliczenie ostatecznej ceny po uwzględnieniu zniżki
         rabat_kwotowo = (cena_bazowa * znizka_procent) / 100
         cena_calkowita = cena_bazowa - rabat_kwotowo
 
@@ -337,7 +347,21 @@ class PanelGlownyView(ui.View):
 
 
 # ==============================================================================
-# 9. GŁÓWNA KLASA BOTA
+# 9. WIDOK PRZYCISKU POWIADOMIENIA O FILMIE
+# ==============================================================================
+class YouTubeButtonView(ui.View):
+    def __init__(self, link: str):
+        super().__init__(timeout=None)
+        self.add_item(ui.Button(
+            label="OGLĄDAJ FILM", 
+            style=discord.ButtonStyle.link, 
+            url=link, 
+            emoji="🎬"
+        ))
+
+
+# ==============================================================================
+# 10. GŁÓWNA KLASA BOTA
 # ==============================================================================
 class HakerolandiaBot(commands.Bot):
     def __init__(self):
@@ -348,7 +372,10 @@ class HakerolandiaBot(commands.Bot):
         logger.info("Ładowanie stałych widoków Hakerolandia...")
         self.add_view(PanelGlownyView())
         self.add_view(CaptchaView())
-        self.add_view(OpiniePanelView())  # Rejestracja widoku opinii odporna na restarty bota
+        self.add_view(OpiniePanelView())
+        
+        # Uruchomienie automatycznego sprawdzania YouTube w tle
+        self.sprawdz_youtube.start()
         
         guild_id = os.getenv("GUILD_ID")
         if guild_id:
@@ -364,12 +391,54 @@ class HakerolandiaBot(commands.Bot):
         logger.info(f"Zalogowano pomyślnie jako {self.user}")
         await self.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="HAKEROLANDIA | SKLEP SERWEROWY"))
 
+    # Pętla działająca w tle (sprawdza YouTube co 10 minut)
+    @tasks.loop(minutes=10)
+    async def sprawdz_youtube(self):
+        global ostatnio_wyslany_id
+        try:
+            feed = feedparser.parse(YOUTUBE_RSS_URL)
+            if not feed.entries:
+                return
+
+            ostatni_film = feed.entries[0]
+            film_id = ostatni_film.id
+            tytul = ostatni_film.title
+            link = ostatni_film.link
+
+            if ostatnio_wyslany_id is None:
+                ostatnio_wyslany_id = film_id
+                return
+
+            if film_id != ostatnio_wyslany_id:
+                ostatnio_wyslany_id = film_id
+                
+                kanal = self.get_channel(KANAL_FILMY_ID)
+                if kanal:
+                    embed = discord.Embed(
+                        title="🎬 NOWY FILM NA YOUTUBE!",
+                        color=0xef4444
+                    )
+                    embed.add_field(name="📌 Typ Publikacji:", value="🎥 Film YouTube", inline=False)
+                    embed.add_field(name="🎬 Tytuł:", value=tytul, inline=False)
+                    embed.add_field(name="🔗 Link:", value=link, inline=False)
+                    embed.set_footer(text="Hakerolandia • Automatyczne powiadomienie")
+                    
+                    view = YouTubeButtonView(link)
+                    await kanal.send("@everyone", embed=embed, view=view)
+                    logger.info(f"Wysłano automatyczne powiadomienie o filmie: {tytul}")
+        except Exception as e:
+            logger.error(f"Błąd podczas sprawdzania kanału YouTube: {e}")
+
+    @sprawdz_youtube.before_loop
+    async def before_sprawdz_youtube(self):
+        await self.wait_until_ready()
+
 
 bot = HakerolandiaBot()
 
 
 # ==============================================================================
-# 10. KOMENDY SLASH
+# 11. KOMENDY SLASH
 # ==============================================================================
 @bot.tree.command(name="wyslij-panel", description="Wysyła główny panel składania zamówień Hakerolandia")
 async def wyslij_panel(interaction: discord.Interaction):
@@ -384,21 +453,9 @@ async def wyslij_panel(interaction: discord.Interaction):
         color=discord.Color.dark_purple()
     )
     
-    embed.add_field(
-        name="🟢 START — 19,99 zł",
-        value="• Oferta na kanale cennik.",
-        inline=False
-    )
-    embed.add_field(
-        name="🔵 BASIC — 39,99 zł",
-        value="• Oferta na kanale cennik.",
-        inline=False
-    )
-    embed.add_field(
-        name="🟣 PREMIUM — 69,99 zł",
-        value="• Oferta na kanale cennik.",
-        inline=False
-    )
+    embed.add_field(name="🟢 START — 19,99 zł", value="• Oferta na kanale cennik.", inline=False)
+    embed.add_field(name="🔵 BASIC — 39,99 zł", value="• Oferta na kanale cennik.", inline=False)
+    embed.add_field(name="🟣 PREMIUM — 69,99 zł", value="• Oferta na kanale cennik.", inline=False)
 
     await interaction.channel.send(embed=embed, view=PanelGlownyView())
     await interaction.response.send_message("✅ Pomyślnie wysłano panel sklepu Hakerolandia!", ephemeral=True)
@@ -412,8 +469,6 @@ async def kod_losuj(interaction: discord.Interaction):
 
     znizka = random.randint(5, 20)
     kod = "PROMO-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
-    
-    # Zapisz losowy kod w słowniku bota
     AKTYWNE_KODY[kod] = znizka
 
     embed = discord.Embed(
@@ -436,35 +491,12 @@ async def cennik(interaction: discord.Interaction):
             "⚠️ **UWAGA!**\n"
             "Zamówienia realizujemy **PO KOLEI** — zgodnie z kolejnością wpłat. ❤️\n\n"
             "🟢 **START — 19,99 zł**\n"
-            "• Max 10 kategorii / 30 kanałów\n"
-            "• Podstawowe rangi\n"
-            "• Lobby\n"
-            "• Zabezpieczenia\n"
-            "• Własne preferencje\n\n"
+            "• Max 10 kategorii / 30 kanałów\n• Podstawowe rangi\n• Lobby\n• Zabezpieczenia\n\n"
             "🔵 **BASIC — 39,99 zł**\n"
-            "• Max 20 kategorii / 50 kanałów\n"
-            "• Rangi użytkowników i administracji\n"
-            "• Ekonomia + sklep\n"
-            "• Selfrole\n"
-            "• Invite Logger\n"
-            "• Lobby + statystyki\n"
-            "• Zabezpieczenia\n\n"
+            "• Max 20 kategorii / 50 kanałów\n• Rangi + Ekonomia + sklep\n• Selfrole & Invite Logger\n\n"
             "🟣 **PREMIUM — 69,99 zł**\n"
-            "• Nielimitowane kategorie i kanały\n"
-            "• Rozbudowane rangi\n"
-            "• Ekonomia + sklep\n"
-            "• Logi + statystyki\n"
-            "• Zaawansowane zabezpieczenia\n"
-            "• Lobby + regulamin\n"
-            "• Pomoc w rozwoju serwera\n\n"
-            "💳 **PŁATNOŚĆ**\n"
-            "BLIK • Revolut\n\n"
-            "⏱️ Realizacja do 48h\n"
-            "⭐ Po odbiorze możesz zostawić opinię!\n"
-            "━━━━━━━━━━━━━━━━━━\n"
-            "🔥 **HAKEROLANDIA**\n"
-            "Twój pomysł. Nasza realizacja.\n"
-            "━━━━━━━━━━━━━━━━━━"
+            "• Nielimitowane kategorie i kanały\n• Zaawansowane zabezpieczenia\n• Pomoc w rozwoju serwera\n\n"
+            "💳 **PŁATNOŚĆ:** BLIK • Revolut | ⏱️ Realizacja do 48h"
         ),
         color=discord.Color.blurple()
     )
@@ -479,29 +511,19 @@ async def wyslij_opinie(interaction: discord.Interaction):
 
     embed = discord.Embed(
         title="HAKEROLANDIA × WYSTAW NAM OPINIĘ",
-        description=(
-            "» **Wystawiając opinię** pokazujesz innym, jak przebiegła Twoja obsługa.\n"
-            "» **Gorąco prosimy** o jej wystawienie, buduje to nasze zaufanie.\n\n"
-            "» Zrobisz to klikając **poniższy przycisk**."
-        ),
+        description="» Wystawiając opinię pokazujesz innym, jak przebiegła Twoja obsługa.\n» Kliknij przycisk poniżej.",
         color=discord.Color.blurple()
     )
-
     await interaction.channel.send(embed=embed, view=OpiniePanelView())
     await interaction.response.send_message("✅ Pomyślnie wysłano panel opinii!", ephemeral=True)
 
 
-@bot.tree.command(name="opinie", description="Otwiera panel wystawiania opinii (Wymagana ranga ⭐• Klient)")
+@bot.tree.command(name="opinie", description="Otwiera panel wystawiania opinii")
 async def opinie(interaction: discord.Interaction):
     rola_klient = discord.utils.get(interaction.guild.roles, name="⭐• Klient")
-    
     if not rola_klient or rola_klient not in interaction.user.roles:
-        await interaction.response.send_message(
-            "❌ **Brak uprawnień!** Nie posiadasz wymaganej rangi **⭐• Klient**, aby móc wystawić opinię.",
-            ephemeral=True
-        )
+        await interaction.response.send_message("❌ Brak wymaganej rangi **⭐• Klient**.", ephemeral=True)
         return
-
     await interaction.response.send_modal(OpiniaModal())
 
 
@@ -511,11 +533,7 @@ async def wyslij_weryfikacje(interaction: discord.Interaction):
         await interaction.response.send_message("❌ Brak uprawnień!", ephemeral=True)
         return
         
-    embed = discord.Embed(
-        title="🛡️ HAKEROLANDIA — WERYFIKACJA",
-        description="Kliknij przycisk poniżej, aby zweryfikować konto.",
-        color=discord.Color.gold()
-    )
+    embed = discord.Embed(title="🛡️ HAKEROLANDIA — WERYFIKACJA", description="Kliknij przycisk poniżej, aby zweryfikować konto.", color=discord.Color.gold())
     await interaction.channel.send(embed=embed, view=CaptchaView())
     await interaction.response.send_message("✅ Wysłano weryfikację!", ephemeral=True)
 
@@ -523,27 +541,21 @@ async def wyslij_weryfikacje(interaction: discord.Interaction):
 @bot.tree.command(name="zakoncz", description="Zamyka i usuwa bieżący ticket zamówienia (Tylko Admin)")
 async def zakoncz(interaction: discord.Interaction):
     if not interaction.user.guild_permissions.administrator:
-        await interaction.response.send_message("❌ Nie masz uprawnień administratora do zamykania ticketów!", ephemeral=True)
+        await interaction.response.send_message("❌ Brak uprawnień administratora!", ephemeral=True)
         return
         
-    embed = discord.Embed(
-        title="HAKEROLANDIA — ZAMÓWIENIE ZREALIZOWANE",
-        description="Dziękujemy za zakupy! Ten kanał zostanie automatycznie usunięty za 5 sekund.",
-        color=discord.Color.green()
-    )
-    
+    embed = discord.Embed(title="HAKEROLANDIA — ZAMÓWIENIE ZREALIZOWANE", description="Dziękujemy za zakupy! Kanał zostanie usunięty za 5 sekund.", color=discord.Color.green())
     await interaction.channel.send(embed=embed)
-    await interaction.response.send_message("✅ Rozpoczęto zamykanie ticketa...", ephemeral=True)
-    
+    await interaction.response.send_message("✅ Zamykanie ticketa...", ephemeral=True)
     await asyncio.sleep(5)
     try:
         await interaction.channel.delete()
     except Exception as e:
-        logger.error(f"Nie udało się usunąć kanału ticketa: {e}")
+        logger.error(f"Błąd usuwania kanału: {e}")
 
 
 # ==============================================================================
-# 11. START APLIKACJI
+# 12. START APLIKACJI
 # ==============================================================================
 def main():
     token = os.getenv("DISCORD_TOKEN")
