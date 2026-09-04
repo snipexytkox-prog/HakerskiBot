@@ -150,7 +150,7 @@ class ZamowienieModal(ui.Modal, title="HAKEROLANDIA — FORMULARZ ZAMÓWIENIA"):
     
     kod_rabatowy = ui.TextInput(
         label="CZY POSIADASZ KOD ZNIŻKOWY:",
-        placeholder="Wpisz np. 40-osob lub inny kod rabatowy.",
+        placeholder="Wpisz np. heker15 lub inny kod rabatowy.",
         required=False,
         max_length=50
     )
@@ -403,7 +403,7 @@ class HakerolandiaBot(commands.Bot):
         await self.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="HAKEROLANDIA | SKLEP SERWEROWY"))
 
     # Pętla działająca w tle (sprawdza YouTube co 10 minut)
-    @tasks.loop(minutes=10)
+    @tasks.loop(minutes=1)
     async def sprawdz_youtube(self):
         global ostatnio_wyslany_id
         try:
