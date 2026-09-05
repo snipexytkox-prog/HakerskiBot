@@ -64,6 +64,48 @@ class CaptchaView(ui.View):
 
 
 # ==============================================================================
+# 1B. SYSTEM TICKETÓW (DODANE)
+# ==============================================================================
+class TicketPanelView(ui.View):
+    def __init__(self, rola_supportu_name: str):
+        super().__init__(timeout=None)
+        self.rola_supportu_name = rola_supportu_name
+
+    @ui.button(label="Stwórz Ticket", style=discord.ButtonStyle.blurple, custom_id="btn_stworz_ticket_hakerolandia", emoji="🎫")
+    async def stworz_ticket(self, interaction: discord.Interaction, button: ui.Button):
+        guild = interaction.guild
+        user = interaction.user
+
+        rola_supportu = discord.utils.get(guild.roles, name=self.rola_supportu_name)
+
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(view_channel=False),
+            user: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True),
+            guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True)
+        }
+
+        if rola_supportu:
+            overwrites[rola_supportu] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True)
+
+        channel_name = f"ticket-{user.name}"
+        try:
+            ticket_channel = await guild.create_text_channel(name=channel_name, overwrites=overwrites)
+        except Exception as e:
+            logger.error(f"Błąd tworzenia kanału ticketa: {e}")
+            await interaction.response.send_message("❌ Nie udało się utworzyć kanału ticketa.", ephemeral=True)
+            return
+
+        embed = discord.Embed(
+            title="🎫 Ticket Pomocy",
+            description=f"Witaj {user.mention}!\nOpisz swój problem lub szczegóły. Administracja wkrótce się z Tobą skontaktuje.",
+            color=discord.Color.blurple()
+        )
+        
+        await ticket_channel.send(content=f"{user.mention} {rola_supportu.mention if rola_supportu else ''}", embed=embed)
+        await interaction.response.send_message(f"✅ Utworzono dla Ciebie ticket: {ticket_channel.mention}", ephemeral=True)
+
+
+# ==============================================================================
 # 2. FORMULARZ OPINII (MODAL)
 # ==============================================================================
 class OpiniaModal(ui.Modal, title="HAKEROLANDIA — WYSTAW OPINIĘ"):
@@ -319,7 +361,7 @@ class WyborProduktuSelectView(ui.View):
             discord.SelectOption(label="🟢 START", description="Cena: 19,99 PLN - Max 10 kategorii i 30 kanałów", value="START|19.99"),
             discord.SelectOption(label="🔵 BASIC", description="Cena: 39,99 PLN - Max 20 kategorii i 50 kanałów", value="BASIC|39.99"),
             discord.SelectOption(label="🟣 PREMIUM", description="Cena: 69,99 PLN - Nielimitowane kategorie i kanały", value="PREMIUM|69.99"),
-            discord.SelectOption(label="🤖 BOTY DISCORD", description="Cena: 35,99 PLN - Niestandardowe boty pod zamówienie", value="BOTY DISCORD|35.99"),
+            discord.SelectOption(label="🤖 BOT NA ZAMÓWIENIE", description="Cena: 35,99 PLN - Niestandardowy bot pod zamówienie", value="BOT NA ZAMÓWIENIE|35.99"),
         ]
     )
     async def select_produkt(self, interaction: discord.Interaction, select: ui.Select):
@@ -408,7 +450,7 @@ class HakerolandiaBot(commands.Bot):
         logger.info(f"Zalogowano pomyślnie jako {self.user}")
         await self.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="HAKEROLANDIA | SKLEP SERWEROWY"))
 
-    # Pętla działająca w tle (sprawdza YouTube co 10 minut)
+    # Pętla działająca w tle (sprawdza YouTube co 1 minutę)
     @tasks.loop(minutes=1)
     async def sprawdz_youtube(self):
         global ostatnio_wyslany_id
@@ -457,6 +499,27 @@ bot = HakerolandiaBot()
 # ==============================================================================
 # 11. KOMENDY SLASH
 # ==============================================================================
+
+# DODANA KOMENDA /ticket setup z wyborem roli (rola name)
+@bot.tree.command(name="ticket", description="Wysyła panel systemowy ticketów z wybraną rolą obsługi (Tylko Admin)")
+@discord.app_commands.describe(rola="Wybierz rolę administracyjną (rola name), która ma obsługiwać tickety")
+async def ticket_setup(interaction: discord.Interaction, rola: discord.Role):
+    if not interaction.user.guild_permissions.administrator:
+        await interaction.response.send_message("❌ Brak uprawnień administratora!", ephemeral=True)
+        return
+
+    embed = discord.Embed(
+        title="🎫 HAKEROLANDIA — POMOC I TICKET",
+        description="Masz pytanie lub chcesz coś zgłosić? Kliknij poniższy przycisk, aby utworzyć prywatny ticket.",
+        color=discord.Color.blurple()
+    )
+    embed.set_footer(text=f"Obsługująca rola: {rola.name}")
+
+    view = TicketPanelView(rola_supportu_name=rola.name)
+    await interaction.channel.send(embed=embed, view=view)
+    await interaction.response.send_message(f"✅ Pomyślnie wysłano panel ticketów (przypisana rola: **{rola.name}**).", ephemeral=True)
+
+
 @bot.tree.command(name="wyslij-panel", description="Wysyła główny panel składania zamówień Hakerolandia")
 async def wyslij_panel(interaction: discord.Interaction):
     if not interaction.user.guild_permissions.administrator:
@@ -473,7 +536,7 @@ async def wyslij_panel(interaction: discord.Interaction):
     embed.add_field(name="🟢 START — 19,99 zł", value="• Max 10 kategorii i 30 kanałów", inline=False)
     embed.add_field(name="🔵 BASIC — 39,99 zł", value="• Max 20 kategorii i 50 kanałów", inline=False)
     embed.add_field(name="🟣 PREMIUM — 69,99 zł", value="• Nielimitowane kategorie i kanały", inline=False)
-    embed.add_field(name="🤖 BOTY DISCORD — 35,99 zł", value="• Niestandardowe boty pod zamówienie", inline=False)
+    embed.add_field(name="🤖 BOT NA ZAMÓWIENIE — 35,99 zł", value="• Niestandardowy bot pod zamówienie", inline=False)
 
     await interaction.channel.send(embed=embed, view=PanelGlownyView())
     await interaction.response.send_message("✅ Pomyślnie wysłano panel sklepu Hakerolandia!", ephemeral=True)
@@ -551,8 +614,8 @@ async def cennik(interaction: discord.Interaction):
             "• Zaawansowane zabezpieczenia\n"
             "• Lobby + regulamin\n"
             "• Pomoc w rozwoju serwera\n\n"
-            "🤖 **BOTY DISCORD — 35,99 zł**\n"
-            "• Niestandardowe boty pod zamówienie\n\n"
+            "🤖 **BOT NA ZAMÓWIENIE — 35,99 zł**\n"
+            "• Niestandardowy bot pod zamówienie\n\n"
             "💳 **PŁATNOŚĆ**\n"
             "BLIK • Revolut\n\n"
             "⏱️ Realizacja do 48h\n"
