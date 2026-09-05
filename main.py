@@ -43,19 +43,24 @@ class CaptchaView(ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @ui.button(label="ZWERYFIKUJ SIĘ (CAPTCHA)", style=discord.ButtonStyle.green, custom_id="btn_captcha_hakerolandia")
+    @ui.button(label="ZWERYFIKUJ SIĘ (CAPTCHA)", style=discord.ButtonStyle.green, custom_id="btn_captcha_hakerolandia", emoji="🛡️")
     async def verify(self, interaction: discord.Interaction, button: ui.Button):
+        # Szukamy dokładnie roli o nazwie "✅ • Zweryfikowany"
         role = discord.utils.get(interaction.guild.roles, name="✅ • Zweryfikowany")
         if not role:
-            await interaction.response.send_message("❌ Błąd: Brak roli ✅ • Zweryfikowany na serwerze.", ephemeral=True)
+            await interaction.response.send_message("❌ Błąd: Brak roli '✅ • Zweryfikowany' na serwerze. Utwórz ją w ustawieniach.", ephemeral=True)
             return
         
         try:
+            if role in interaction.user.roles:
+                await interaction.response.send_message("ℹ️ Twoje konto jest już zweryfikowane!", ephemeral=True)
+                return
+
             await interaction.user.add_roles(role)
-            await interaction.response.send_message("✅ Pomyślnie zweryfikowano konto!", ephemeral=True)
+            await interaction.response.send_message("✅ Pomyślnie zweryfikowano konto! Witaj na serwerze Hakerolandia.", ephemeral=True)
         except Exception as e:
             logger.error(f"Błąd nadawania roli: {e}")
-            await interaction.response.send_message("❌ Brak uprawnień do nadania roli.", ephemeral=True)
+            await interaction.response.send_message("❌ Brak uprawnień do nadania roli (upewnij się, że bot ma wyższą rangę niż rola '✅ • Zweryfikowany' w zakładce Role).", ephemeral=True)
 
 
 # ==============================================================================
@@ -314,7 +319,7 @@ class WyborProduktuSelectView(ui.View):
             discord.SelectOption(label="🟢 START", description="Cena: 19,99 PLN - Max 10 kategorii / 30 kanałów", value="START|19.99"),
             discord.SelectOption(label="🔵 BASIC", description="Cena: 35,99 PLN - Max 20 kategorii / 50 kanałów", value="BASIC|35.99"),
             discord.SelectOption(label="🟣 PREMIUM", description="Cena: 69,99 PLN - Nielimitowane kategorie i kanały", value="PREMIUM|69.99"),
-            discord.SelectOption(label="🤖 BOTY DISCORD", description="Cena: 35,99 PLN - Autorskie boty pod zamówienie", value="BOTY|35.99"),
+            discord.SelectOption(label="🤖 BOTY DISCORD", description="Cena: 35,99 PLN - Powitania i pożegnania", value="BOTY DISCORD|35.99"),
         ]
     )
     async def select_produkt(self, interaction: discord.Interaction, select: ui.Select):
@@ -403,8 +408,8 @@ class HakerolandiaBot(commands.Bot):
         logger.info(f"Zalogowano pomyślnie jako {self.user}")
         await self.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="HAKEROLANDIA | SKLEP SERWEROWY"))
 
-    # Pętla działająca w tle (sprawdza YouTube co 1 minut)
-    @tasks.loop(minutes=1)
+    # Pętla działająca w tle (sprawdza YouTube co 10 minut)
+    @tasks.loop(minutes=10)
     async def sprawdz_youtube(self):
         global ostatnio_wyslany_id
         try:
@@ -468,7 +473,7 @@ async def wyslij_panel(interaction: discord.Interaction):
     embed.add_field(name="🟢 START — 19,99 zł", value="• Oferta na kanale cennik.", inline=False)
     embed.add_field(name="🔵 BASIC — 35,99 zł", value="• Oferta na kanale cennik.", inline=False)
     embed.add_field(name="🟣 PREMIUM — 69,99 zł", value="• Oferta na kanale cennik.", inline=False)
-    embed.add_field(name="🤖 BOTY DISCORD — 35,99 zł", value="• Oferta na kanale cennik.", inline=False)
+    embed.add_field(name="🤖 BOTY DISCORD — 35,99 zł", value="• Powitania i pożegnania", inline=False)
 
     await interaction.channel.send(embed=embed, view=PanelGlownyView())
     await interaction.response.send_message("✅ Pomyślnie wysłano panel sklepu Hakerolandia!", ephemeral=True)
@@ -481,7 +486,7 @@ async def wyslij_strone(interaction: discord.Interaction):
         return
 
     embed = discord.Embed(
-        title="Hakerolandia × OFICJALNA STRONA",
+        title="Hakerolandia.pl × OFICJALNA STRONA WWW",
         description=(
             "➡️ **Zapraszamy do odwiedzenia naszej oficjalnej strony internetowej!**\n\n"
             "➡️ Znajdziesz tam pełną ofertę naszych usług, szczegółowy cennik oraz aktualności.\n\n"
@@ -530,7 +535,7 @@ async def cennik(interaction: discord.Interaction):
             "🟣 **PREMIUM — 69,99 zł**\n"
             "• Nielimitowane kategorie i kanały\n• Zaawansowane zabezpieczenia\n• Pomoc w rozwoju serwera\n\n"
             "🤖 **BOTY DISCORD — 35,99 zł**\n"
-            "• Autorskie boty Discord pod zamówienie\n• Konfiguracja i pomoc\n\n"
+            "• Powitania i pożegnania\n\n"
             "💳 **PŁATNOŚĆ:** BLIK • Revolut | ⏱️ Realizacja do 48h"
         ),
         color=discord.Color.blurple()
@@ -562,15 +567,28 @@ async def opinie(interaction: discord.Interaction):
     await interaction.response.send_modal(OpiniaModal())
 
 
-@bot.tree.command(name="wyslij-weryfikacje", description="Wysyła panel weryfikacji CAPTCHA")
+@bot.tree.command(name="wyslij-weryfikacje", description="Wysyła panel weryfikacji CAPTCHA (Tylko Admin)")
 async def wyslij_weryfikacje(interaction: discord.Interaction):
     if not interaction.user.guild_permissions.administrator:
-        await interaction.response.send_message("❌ Brak uprawnień!", ephemeral=True)
+        await interaction.response.send_message("❌ Brak uprawnień administratora!", ephemeral=True)
         return
         
-    embed = discord.Embed(title="🛡️ HAKEROLANDIA — WERYFIKACJA", description="Kliknij przycisk poniżej, aby zweryfikować konto.", color=discord.Color.gold())
+    embed = discord.Embed(
+        title="🛡️ Panel Weryfikacyjny Serwera",
+        description=(
+            "Witaj! Aby zapobiec automatycznym botom i kontom rajdowym, wymagane jest przejście weryfikacji.\n\n"
+            "**Wymagania systemowe:**\n"
+            "• Wiek konta: minimum 7 dni\n"
+            "• Ustawione zdjęcie profilowe (Avatar)\n"
+            "• Prawidłowa weryfikacja przyciskiem\n\n"
+            "Kliknij poniższy przycisk, aby zweryfikować konto i uzyskać dostęp do serwera."
+        ),
+        color=discord.Color.gold()
+    )
+    embed.set_footer(text="System Bezpieczeństwa Hakerolandia")
+
     await interaction.channel.send(embed=embed, view=CaptchaView())
-    await interaction.response.send_message("✅ Wysłano weryfikację!", ephemeral=True)
+    await interaction.response.send_message("✅ Pomyślnie wysłano panel weryfikacji!", ephemeral=True)
 
 
 @bot.tree.command(name="zakoncz", description="Zamyka i usuwa bieżący ticket zamówienia (Tylko Admin)")
@@ -579,7 +597,7 @@ async def zakoncz(interaction: discord.Interaction):
         await interaction.response.send_message("❌ Brak uprawnień administratora!", ephemeral=True)
         return
         
-    embed = discord.Embed(title="HAKEROLANDIA — ZAMÓWIENIE ZREALIZOWANE", description="Dziękujemy za zakupy! Kanał zostanie usunięty za 5 sekund. Gorąco zachęcamy do wystanwienia pozytywnej opini.", color=discord.Color.green())
+    embed = discord.Embed(title="HAKEROLANDIA — ZAMÓWIENIE ZREALIZOWANE", description="Dziękujemy za zakupy! Kanał zostanie usunięty za 5 sekund.", color=discord.Color.green())
     await interaction.channel.send(embed=embed)
     await interaction.response.send_message("✅ Zamykanie ticketa...", ephemeral=True)
     await asyncio.sleep(5)
