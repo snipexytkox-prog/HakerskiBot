@@ -319,7 +319,7 @@ class WyborProduktuSelectView(ui.View):
             discord.SelectOption(label="🟢 START", description="Cena: 19,99 PLN - Max 10 kategorii / 30 kanałów", value="START|19.99"),
             discord.SelectOption(label="🔵 BASIC", description="Cena: 35,99 PLN - Max 20 kategorii / 50 kanałów", value="BASIC|35.99"),
             discord.SelectOption(label="🟣 PREMIUM", description="Cena: 69,99 PLN - Nielimitowane kategorie i kanały", value="PREMIUM|69.99"),
-            discord.SelectOption(label="🤖 BOTY DISCORD", description="Cena: 35,99 PLN - Powitania i pożegnania", value="BOTY DISCORD|35.99"),
+            discord.SelectOption(label="🤖 BOTY DISCORD", description="Cena: 35,99 PLN - Boty discord na zamówienie", value="BOTY DISCORD|35.99"),
         ]
     )
     async def select_produkt(self, interaction: discord.Interaction, select: ui.Select):
