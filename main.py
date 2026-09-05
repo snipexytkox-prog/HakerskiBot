@@ -409,7 +409,7 @@ class HakerolandiaBot(commands.Bot):
         await self.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="HAKEROLANDIA | SKLEP SERWEROWY"))
 
     # Pętla działająca w tle (sprawdza YouTube co 10 minut)
-    @tasks.loop(minutes=10)
+    @tasks.loop(minutes=1)
     async def sprawdz_youtube(self):
         global ostatnio_wyslany_id
         try:
