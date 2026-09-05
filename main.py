@@ -47,7 +47,7 @@ class CaptchaView(ui.View):
     async def verify(self, interaction: discord.Interaction, button: ui.Button):
         role = discord.utils.get(interaction.guild.roles, name="✅ • Zweryfikowany")
         if not role:
-            await interaction.response.send_message("❌ Błąd: Brak roli '✅ • Zweryfikowany' na serwerze.", ephemeral=True)
+            await interaction.response.send_message("❌ Błąd: Brak roli ✅ • Zweryfikowany na serwerze.", ephemeral=True)
             return
         
         try:
@@ -150,7 +150,7 @@ class ZamowienieModal(ui.Modal, title="HAKEROLANDIA — FORMULARZ ZAMÓWIENIA"):
     
     kod_rabatowy = ui.TextInput(
         label="CZY POSIADASZ KOD ZNIŻKOWY:",
-        placeholder="Wpisz np. heker15 lub inny kod rabatowy.",
+        placeholder="Wpisz np. 40-osob lub inny kod rabatowy.",
         required=False,
         max_length=50
     )
@@ -312,8 +312,9 @@ class WyborProduktuSelectView(ui.View):
         custom_id="select_hakerolandia_produkt",
         options=[
             discord.SelectOption(label="🟢 START", description="Cena: 19,99 PLN - Max 10 kategorii / 30 kanałów", value="START|19.99"),
-            discord.SelectOption(label="🔵 BASIC", description="Cena: 39,99 PLN - Max 20 kategorii / 50 kanałów", value="BASIC|39.99"),
+            discord.SelectOption(label="🔵 BASIC", description="Cena: 35,99 PLN - Max 20 kategorii / 50 kanałów", value="BASIC|35.99"),
             discord.SelectOption(label="🟣 PREMIUM", description="Cena: 69,99 PLN - Nielimitowane kategorie i kanały", value="PREMIUM|69.99"),
+            discord.SelectOption(label="🤖 BOTY DISCORD", description="Cena: 35,99 PLN - Autorskie boty pod zamówienie", value="BOTY|35.99"),
         ]
     )
     async def select_produkt(self, interaction: discord.Interaction, select: ui.Select):
@@ -402,7 +403,7 @@ class HakerolandiaBot(commands.Bot):
         logger.info(f"Zalogowano pomyślnie jako {self.user}")
         await self.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="HAKEROLANDIA | SKLEP SERWEROWY"))
 
-    # Pętla działająca w tle (sprawdza YouTube co 10 minut)
+    # Pętla działająca w tle (sprawdza YouTube co 1 minut)
     @tasks.loop(minutes=1)
     async def sprawdz_youtube(self):
         global ostatnio_wyslany_id
@@ -465,8 +466,9 @@ async def wyslij_panel(interaction: discord.Interaction):
     )
     
     embed.add_field(name="🟢 START — 19,99 zł", value="• Oferta na kanale cennik.", inline=False)
-    embed.add_field(name="🔵 BASIC — 39,99 zł", value="• Oferta na kanale cennik.", inline=False)
+    embed.add_field(name="🔵 BASIC — 35,99 zł", value="• Oferta na kanale cennik.", inline=False)
     embed.add_field(name="🟣 PREMIUM — 69,99 zł", value="• Oferta na kanale cennik.", inline=False)
+    embed.add_field(name="🤖 BOTY DISCORD — 35,99 zł", value="• Oferta na kanale cennik.", inline=False)
 
     await interaction.channel.send(embed=embed, view=PanelGlownyView())
     await interaction.response.send_message("✅ Pomyślnie wysłano panel sklepu Hakerolandia!", ephemeral=True)
@@ -523,10 +525,12 @@ async def cennik(interaction: discord.Interaction):
             "Zamówienia realizujemy **PO KOLEI** — zgodnie z kolejnością wpłat. ❤️\n\n"
             "🟢 **START — 19,99 zł**\n"
             "• Max 10 kategorii / 30 kanałów\n• Podstawowe rangi\n• Lobby\n• Zabezpieczenia\n\n"
-            "🔵 **BASIC — 39,99 zł**\n"
+            "🔵 **BASIC — 35,99 zł**\n"
             "• Max 20 kategorii / 50 kanałów\n• Rangi + Ekonomia + sklep\n• Selfrole & Invite Logger\n\n"
             "🟣 **PREMIUM — 69,99 zł**\n"
             "• Nielimitowane kategorie i kanały\n• Zaawansowane zabezpieczenia\n• Pomoc w rozwoju serwera\n\n"
+            "🤖 **BOTY DISCORD — 35,99 zł**\n"
+            "• Autorskie boty Discord pod zamówienie\n• Konfiguracja i pomoc\n\n"
             "💳 **PŁATNOŚĆ:** BLIK • Revolut | ⏱️ Realizacja do 48h"
         ),
         color=discord.Color.blurple()
@@ -575,7 +579,7 @@ async def zakoncz(interaction: discord.Interaction):
         await interaction.response.send_message("❌ Brak uprawnień administratora!", ephemeral=True)
         return
         
-    embed = discord.Embed(title="HAKEROLANDIA — ZAMÓWIENIE ZREALIZOWANE", description="Dziękujemy za zakupy! Kanał zostanie usunięty za 5 sekund.", color=discord.Color.green())
+    embed = discord.Embed(title="HAKEROLANDIA — ZAMÓWIENIE ZREALIZOWANE", description="Dziękujemy za zakupy! Kanał zostanie usunięty za 5 sekund. Gorąco zachęcamy do wystanwienia pozytywnej opini.", color=discord.Color.green())
     await interaction.channel.send(embed=embed)
     await interaction.response.send_message("✅ Zamykanie ticketa...", ephemeral=True)
     await asyncio.sleep(5)
