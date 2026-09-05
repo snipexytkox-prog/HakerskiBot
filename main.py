@@ -316,10 +316,10 @@ class WyborProduktuSelectView(ui.View):
         placeholder="Wybierz pakiet z listy...",
         custom_id="select_hakerolandia_produkt",
         options=[
-            discord.SelectOption(label="🟢 START", description="Cena: 19,99 PLN - Max 10 kategorii / 30 kanałów", value="START|19.99"),
-            discord.SelectOption(label="🔵 BASIC", description="Cena: 35,99 PLN - Max 20 kategorii / 50 kanałów", value="BASIC|35.99"),
+            discord.SelectOption(label="🟢 START", description="Cena: 19,99 PLN - Max 10 kategorii i 30 kanałów", value="START|19.99"),
+            discord.SelectOption(label="🔵 BASIC", description="Cena: 39,99 PLN - Max 20 kategorii i 50 kanałów", value="BASIC|39.99"),
             discord.SelectOption(label="🟣 PREMIUM", description="Cena: 69,99 PLN - Nielimitowane kategorie i kanały", value="PREMIUM|69.99"),
-            discord.SelectOption(label="🤖 BOTY DISCORD", description="Cena: 35,99 PLN - Boty discord na zamówienie", value="BOTY DISCORD|35.99"),
+            discord.SelectOption(label="🤖 BOTY DISCORD", description="Cena: 35,99 PLN - Niestandardowe boty pod zamówienie", value="BOTY DISCORD|35.99"),
         ]
     )
     async def select_produkt(self, interaction: discord.Interaction, select: ui.Select):
@@ -470,10 +470,10 @@ async def wyslij_panel(interaction: discord.Interaction):
         color=discord.Color.dark_purple()
     )
     
-    embed.add_field(name="🟢 START — 19,99 zł", value="• Oferta na kanale cennik.", inline=False)
-    embed.add_field(name="🔵 BASIC — 35,99 zł", value="• Oferta na kanale cennik.", inline=False)
-    embed.add_field(name="🟣 PREMIUM — 69,99 zł", value="• Oferta na kanale cennik.", inline=False)
-    embed.add_field(name="🤖 BOTY DISCORD — 35,99 zł", value="• Powitania i pożegnania", inline=False)
+    embed.add_field(name="🟢 START — 19,99 zł", value="• Max 10 kategorii i 30 kanałów", inline=False)
+    embed.add_field(name="🔵 BASIC — 39,99 zł", value="• Max 20 kategorii i 50 kanałów", inline=False)
+    embed.add_field(name="🟣 PREMIUM — 69,99 zł", value="• Nielimitowane kategorie i kanały", inline=False)
+    embed.add_field(name="🤖 BOTY DISCORD — 35,99 zł", value="• Niestandardowe boty pod zamówienie", inline=False)
 
     await interaction.channel.send(embed=embed, view=PanelGlownyView())
     await interaction.response.send_message("✅ Pomyślnie wysłano panel sklepu Hakerolandia!", ephemeral=True)
@@ -486,7 +486,7 @@ async def wyslij_strone(interaction: discord.Interaction):
         return
 
     embed = discord.Embed(
-        title="Hakerolandia.pl × OFICJALNA STRONA WWW",
+        title="Hakerolandia × OFICJALNA STRONA",
         description=(
             "➡️ **Zapraszamy do odwiedzenia naszej oficjalnej strony internetowej!**\n\n"
             "➡️ Znajdziesz tam pełną ofertę naszych usług, szczegółowy cennik oraz aktualności.\n\n"
@@ -524,19 +524,43 @@ async def kod_losuj(interaction: discord.Interaction):
 @bot.tree.command(name="cennik", description="Wyświetla oficjalny cennik Hakerolandia")
 async def cennik(interaction: discord.Interaction):
     embed = discord.Embed(
-        title="📃 CENNIK HAKEROLANDIA",
+        title="📑 CENNIK HAKEROLANDIA",
         description=(
+            "**HAKEROLANDIA**\n\n"
             "⚠️ **UWAGA!**\n"
             "Zamówienia realizujemy **PO KOLEI** — zgodnie z kolejnością wpłat. ❤️\n\n"
             "🟢 **START — 19,99 zł**\n"
-            "• Max 10 kategorii / 30 kanałów\n• Podstawowe rangi\n• Lobby\n• Zabezpieczenia\n\n"
-            "🔵 **BASIC — 35,99 zł**\n"
-            "• Max 20 kategorii / 50 kanałów\n• Rangi + Ekonomia + sklep\n• Selfrole & Invite Logger\n\n"
+            "• Max 10 kategorii i 30 kanałów\n"
+            "• Podstawowe rangi\n"
+            "• Lobby\n"
+            "• Zabezpieczenia\n"
+            "• Własne preferencje\n\n"
+            "🔵 **BASIC — 39,99 zł**\n"
+            "• Max 20 kategorii i 50 kanałów\n"
+            "• Rangi użytkowników i administracji\n"
+            "• Ekonomia + sklep\n"
+            "• Selfrole\n"
+            "• Invite Logger\n"
+            "• Lobby + statystyki\n"
+            "• Zabezpieczenia\n\n"
             "🟣 **PREMIUM — 69,99 zł**\n"
-            "• Nielimitowane kategorie i kanały\n• Zaawansowane zabezpieczenia\n• Pomoc w rozwoju serwera\n\n"
+            "• Nielimitowane kategorie i kanały\n"
+            "• Rozbudowane rangi\n"
+            "• Ekonomia + sklep\n"
+            "• Logi + statystyki\n"
+            "• Zaawansowane zabezpieczenia\n"
+            "• Lobby + regulamin\n"
+            "• Pomoc w rozwoju serwera\n\n"
             "🤖 **BOTY DISCORD — 35,99 zł**\n"
-            "• Powitania i pożegnania\n\n"
-            "💳 **PŁATNOŚĆ:** BLIK • Revolut | ⏱️ Realizacja do 48h"
+            "• Niestandardowe boty pod zamówienie\n\n"
+            "💳 **PŁATNOŚĆ**\n"
+            "BLIK • Revolut\n\n"
+            "⏱️ Realizacja do 48h\n"
+            "⭐ Po odbiorze możesz zostawić opinię!\n"
+            "━━━━━━━━━━━━━━━━━━\n"
+            "🔥 **HAKEROLANDIA**\n"
+            "Twój pomysł. Nasza realizacja.\n"
+            "━━━━━━━━━━━━━━━━━━"
         ),
         color=discord.Color.blurple()
     )
