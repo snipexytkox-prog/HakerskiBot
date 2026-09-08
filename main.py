@@ -372,7 +372,6 @@ class HakerolandiaBot(commands.Bot):
     async def aktualizuj_liczniki_loop(self):
         for guild in self.guilds:
             try:
-                # Liczba widzów (tylko użytkownicy bez botów) oraz botów
                 widzowie_count = len([m for m in guild.members if not m.bot])
                 boty_count = len([m for m in guild.members if m.bot])
                 
@@ -403,11 +402,11 @@ class HakerolandiaBot(commands.Bot):
                         if channel.name != nowa_nazwa:
                             await channel.edit(name=nowa_nazwa)
                     elif "bany" in name_lower:
-                        nowa_nazwa = f"Bany : {ban_count}"
+                        nowa_nazwa = f"🔨 Bany : {ban_count}"
                         if channel.name != nowa_nazwa:
                             await channel.edit(name=nowa_nazwa)
                     elif "nowy" in name_lower:
-                        nowa_nazwa = f"Nowy : {nowy_user}"
+                        nowa_nazwa = f"✨ Nowy : {nowy_user}"
                         if channel.name != nowa_nazwa:
                             await channel.edit(name=nowa_nazwa)
             except Exception as e:
@@ -457,7 +456,7 @@ bot = HakerolandiaBot()
 # ==============================================================================
 # 5. KOMENDY SLASH
 # ==============================================================================
-@bot.tree.command(name="staty-setup", description="Automatycznie tworzy kategorię i kanały statystyk z emotkami (Tylko Admin)")
+@bot.tree.command(name="staty-setup", description="Automatycznie tworzy kategorię statystyk na samej górze (Tylko Admin)")
 async def staty_setup(interaction: discord.Interaction):
     if not interaction.user.guild_permissions.administrator:
         await interaction.response.send_message("❌ Brak uprawnień administratora!", ephemeral=True)
@@ -469,19 +468,17 @@ async def staty_setup(interaction: discord.Interaction):
     }
 
     try:
-        # Tworzenie dedykowanej kategorii ze statystykami
-        kategoria = await guild.create_category(name="📈 | ----statystyki----")
+        # position=0 ustawia kategorię na samą górę listy kanałów na serwerze
+        kategoria = await guild.create_category(name="📈 | ----statystyki----", position=0)
 
-        # Tworzenie kanałów głosowych wewnątrz kategorii
         c1 = await guild.create_voice_channel(name="Widzowie 🧑🏼 : 0", category=kategoria, overwrites=overwrites)
         c2 = await guild.create_voice_channel(name="Boty 🤖 : 0", category=kategoria, overwrites=overwrites)
-        c3 = await guild.create_voice_channel(name="Bany : 0", category=kategoria, overwrites=overwrites)
-        c4 = await guild.create_voice_channel(name="Nowy : Brak", category=kategoria, overwrites=overwrites)
+        c3 = await guild.create_voice_channel(name="🔨 Bany : 0", category=kategoria, overwrites=overwrites)
+        c4 = await guild.create_voice_channel(name="✨ Nowy : Brak", category=kategoria, overwrites=overwrites)
 
         await interaction.response.send_message(
-            f"✅ Pomyślnie utworzono kategorię **📈 | ----statystyki----** i kanały:\n"
-            f"• {c1.mention}\n• {c2.mention}\n• {c3.mention}\n• {c4.mention}\n\n"
-            f"*Bot zaktualizuje ich liczbę w ciągu kilku minut.*",
+            f"✅ Utworzono kategorię **📈 | ----statystyki----** na **samym początku** listy kanałów:\n"
+            f"• {c1.mention}\n• {c2.mention}\n• {c3.mention}\n• {c4.mention}",
             ephemeral=True
         )
     except Exception as e:
