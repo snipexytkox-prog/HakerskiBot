@@ -18,21 +18,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger("HakerolandiaShop")
 
-# Globalny magazyn aktywnych kodów zniżkowych
+# Globalny magazyn aktywnych kodów zniżkowych oraz statystyk zamówień
 AKTYWNE_KODY = {
     "40-osob": 5
 }
+STATYSTYKI_SKLEPU = {
+    "zamowienia_zrealizowane": 0
+}
 
 # ==============================================================================
-# KONFIGURACJA POWIADOMIEŃ YOUTUBE (W STYLU KOYA)
+# KONFIGURACJA POWIADOMIEŃ YOUTUBE
 # ==============================================================================
-# ID Twojego kanału na Discordzie (nowe filmy)
 KANAL_FILMY_ID = 1532729202007216140
-
-# Twój adres RSS z Twoim ID YouTube
 YOUTUBE_RSS_URL = "https://www.youtube.com/feeds/videos.xml?channel_id=UCCelA7w6rz4fDhrPG2DbY1A"
-
-# Zmienna pomocnicza do śledzenia ostatnio wysłanego filmu
 ostatnio_wyslany_id = None
 
 
@@ -45,10 +43,9 @@ class CaptchaView(ui.View):
 
     @ui.button(label="ZWERYFIKUJ SIĘ (CAPTCHA)", style=discord.ButtonStyle.green, custom_id="btn_captcha_hakerolandia", emoji="🛡️")
     async def verify(self, interaction: discord.Interaction, button: ui.Button):
-        # Szukamy dokładnie roli o nazwie "✅ • Zweryfikowany"
         role = discord.utils.get(interaction.guild.roles, name="✅ • Zweryfikowany")
         if not role:
-            await interaction.response.send_message("❌ Błąd: Brak roli '✅ • Zweryfikowany' na serwerze. Utwórz ją w ustawieniach.", ephemeral=True)
+            await interaction.response.send_message("❌ Błąd: Brak roli '✅ • Zweryfikowany' na serwerze.", ephemeral=True)
             return
         
         try:
@@ -60,21 +57,66 @@ class CaptchaView(ui.View):
             await interaction.response.send_message("✅ Pomyślnie zweryfikowano konto! Witaj na serwerze Hakerolandia.", ephemeral=True)
         except Exception as e:
             logger.error(f"Błąd nadawania roli: {e}")
-            await interaction.response.send_message("❌ Brak uprawnień do nadania roli (upewnij się, że bot ma wyższą rangę niż rola '✅ • Zweryfikowany' w zakładce Role).", ephemeral=True)
+            await interaction.response.send_message("❌ Brak uprawnień do nadania roli.", ephemeral=True)
 
 
 # ==============================================================================
-# 1B. SYSTEM TICKETÓW (DODANE)
+# 1B. ZAAWANSOWANY SYSTEM TICKETÓW
 # ==============================================================================
-class TicketPanelView(ui.View):
-    def __init__(self, rola_supportu_name: str):
+class TicketCloseView(ui.View):
+    def __init__(self):
         super().__init__(timeout=None)
-        self.rola_supportu_name = rola_supportu_name
 
-    @ui.button(label="Stwórz Ticket", style=discord.ButtonStyle.blurple, custom_id="btn_stworz_ticket_hakerolandia", emoji="🎫")
-    async def stworz_ticket(self, interaction: discord.Interaction, button: ui.Button):
+    @ui.button(label="🔒 Zamknij Ticket", style=discord.ButtonStyle.danger, custom_id="btn_zamknij_ticket_hakerolandia", emoji="🗑️")
+    async def zamknij_ticket(self, interaction: discord.Interaction, button: ui.Button):
+        if not interaction.user.guild_permissions.manage_channels:
+            if not any(interaction.channel.name.startswith(p) for p in ["ticket-", "zamówienie-", "pomoc-", "pytania-"]):
+                await interaction.response.send_message("❌ Nie masz uprawnień do zamknięcia tego ticketa.", ephemeral=True)
+                return
+
+        embed = discord.Embed(title="🎫 TICKET ZAMKNIĘTY", description=f"Ten ticket został zamknięty przez {interaction.user.mention}.\nKanał zostanie usunięty za 5 sekund...", color=discord.Color.red())
+        await interaction.response.send_message(embed=embed)
+        await asyncio.sleep(5)
+        try:
+            await interaction.channel.delete()
+        except Exception as e:
+            logger.error(f"Błąd usuwania kanału ticketa: {e}")
+
+
+class TicketSelect(ui.Select):
+    def __init__(self, rola_supportu_name: str):
+        self.rola_supportu_name = rola_supportu_name
+        options = [
+            discord.SelectOption(
+                label="Pomoc & Wsparcie", 
+                description="Problemy techniczne, zgłoszenia i pomoc", 
+                emoji="🛠️", 
+                value="pomoc"
+            ),
+            discord.SelectOption(
+                label="Pytania Ogólne", 
+                description="Ogólne pytania i informacje o serwerze", 
+                emoji="❓", 
+                value="pytania"
+            ),
+        ]
+        super().__init__(placeholder="Wybierz temat zgłoszenia...", custom_id="select_hakerolandia_ticket_temat", options=options)
+
+    async def callback(self, interaction: discord.Interaction):
         guild = interaction.guild
         user = interaction.user
+        wybor = self.values[0]
+
+        if wybor == "pomoc":
+            tytul_tematu = "Pomoc & Wsparcie"
+            opis_tematu = "Problemy techniczne, zgłoszenia i pomoc"
+            prefix = "pomoc"
+            emoji = "🛠️"
+        else:
+            tytul_tematu = "Pytania Ogólne"
+            opis_tematu = "Ogólne pytania i informacje o serwerze"
+            prefix = "pytania"
+            emoji = "❓"
 
         rola_supportu = discord.utils.get(guild.roles, name=self.rola_supportu_name)
 
@@ -87,7 +129,8 @@ class TicketPanelView(ui.View):
         if rola_supportu:
             overwrites[rola_supportu] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True)
 
-        channel_name = f"ticket-{user.name}"
+        channel_name = f"{prefix}-{user.name}"
+        
         try:
             ticket_channel = await guild.create_text_channel(name=channel_name, overwrites=overwrites)
         except Exception as e:
@@ -96,13 +139,23 @@ class TicketPanelView(ui.View):
             return
 
         embed = discord.Embed(
-            title="🎫 Ticket Pomocy",
-            description=f"Witaj {user.mention}!\nOpisz swój problem lub szczegóły. Administracja wkrótce się z Tobą skontaktuje.",
+            title=f"{emoji} Ticket Zgłoszeniowy — {tytul_tematu}",
+            description=f"Witaj {user.mention}!\n\n"
+                        f"📌 **Temat zgłoszenia:** {tytul_tematu}\n"
+                        f"📝 **Opis:** {opis_tematu}\n\n"
+                        f"Opisz dokładnie swój problem lub pytanie. Administracja wkrótce Ci odpowie.",
             color=discord.Color.blurple()
         )
         
-        await ticket_channel.send(content=f"{user.mention} {rola_supportu.mention if rola_supportu else ''}", embed=embed)
+        view = TicketCloseView()
+        await ticket_channel.send(content=f"{user.mention} {rola_supportu.mention if rola_supportu else ''}", embed=embed, view=view)
         await interaction.response.send_message(f"✅ Utworzono dla Ciebie ticket: {ticket_channel.mention}", ephemeral=True)
+
+
+class TicketPanelView(ui.View):
+    def __init__(self, rola_supportu_name: str):
+        super().__init__(timeout=None)
+        self.add_item(TicketSelect(rola_supportu_name))
 
 
 # ==============================================================================
@@ -112,27 +165,11 @@ class OpiniaModal(ui.Modal, title="HAKEROLANDIA — WYSTAW OPINIĘ"):
     def __init__(self):
         super().__init__()
 
-    ocena = ui.TextInput(
-        label="OCENA (np. ⭐⭐⭐⭐⭐ / 5/5):",
-        placeholder="Wpisz ocenę gwiazdkową lub cyfrową",
-        required=True,
-        max_length=20
-    )
-    
-    tresc = ui.TextInput(
-        label="TREŚĆ OPINII:",
-        placeholder="Napisz, co sądzisz o realizacji zamówienia...",
-        style=discord.TextStyle.paragraph,
-        required=True,
-        max_length=500
-    )
+    ocena = ui.TextInput(label="OCENA (np. ⭐⭐⭐⭐⭐ / 5/5):", placeholder="Wpisz ocenę gwiazdkową lub cyfrową", required=True, max_length=20)
+    tresc = ui.TextInput(label="TREŚĆ OPINII:", placeholder="Napisz, co sądzisz o realizacji zamówienia...", style=discord.TextStyle.paragraph, required=True, max_length=500)
 
     async def on_submit(self, interaction: discord.Interaction):
-        embed = discord.Embed(
-            title="⭐ NOWA OPINIA O HAKEROLANDIA",
-            color=discord.Color.gold(),
-            timestamp=discord.utils.utcnow()
-        )
+        embed = discord.Embed(title="⭐ NOWA OPINIA O HAKEROLANDIA", color=discord.Color.gold(), timestamp=discord.utils.utcnow())
         embed.add_field(name="Autor", value=interaction.user.mention, inline=True)
         embed.add_field(name="Ocena", value=self.ocena.value, inline=True)
         embed.add_field(name="Treść", value=self.tresc.value, inline=False)
@@ -142,9 +179,6 @@ class OpiniaModal(ui.Modal, title="HAKEROLANDIA — WYSTAW OPINIĘ"):
         await interaction.response.send_message("✅ Twoja opinia została pomyślnie opublikowana! Dziękujemy!", ephemeral=True)
 
 
-# ==============================================================================
-# 3. WIDOK PANELU OPINII (PRZYCISK)
-# ==============================================================================
 class OpiniePanelView(ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -152,19 +186,14 @@ class OpiniePanelView(ui.View):
     @ui.button(label="Wystaw Opinię", style=discord.ButtonStyle.green, custom_id="btn_hakerolandia_wystaw_opinie", emoji="⭐")
     async def wystaw_opinie_btn(self, interaction: discord.Interaction, button: ui.Button):
         rola_klient = discord.utils.get(interaction.guild.roles, name="⭐ • Klient")
-        
         if not rola_klient or rola_klient not in interaction.user.roles:
-            await interaction.response.send_message(
-                "❌ **Brak uprawnień!** Nie posiadasz wymaganej rangi **⭐ • Klient**, aby móc wystawić opinię.",
-                ephemeral=True
-            )
+            await interaction.response.send_message("❌ **Brak uprawnień!** Nie posiadasz wymaganej rangi **⭐ • Klient**.", ephemeral=True)
             return
-
         await interaction.response.send_modal(OpiniaModal())
 
 
 # ==============================================================================
-# 4. FORMULARZ ZAMÓWIENIA (MODAL) Z UWAGAMI I KODEM RABATOWYM
+# 3. FORMULARZ ZAMÓWIENIA (MODAL)
 # ==============================================================================
 class ZamowienieModal(ui.Modal, title="HAKEROLANDIA — FORMULARZ ZAMÓWIENIA"):
     def __init__(self, produkt: str, cena_jednostkowa: float, ilosc: int):
@@ -173,41 +202,11 @@ class ZamowienieModal(ui.Modal, title="HAKEROLANDIA — FORMULARZ ZAMÓWIENIA"):
         self.cena_jednostkowa = cena_jednostkowa
         self.ilosc = ilosc
 
-    discord_nick = ui.TextInput(
-        label="JAKI JEST TWÓJ DISCORD NICK:",
-        placeholder="np. HakerPro",
-        required=True,
-        max_length=100
-    )
-    
-    platnosc = ui.TextInput(
-        label="JAKĄ METODĄ PŁATNOŚCI CHCESZ ZAPŁACIć:",
-        placeholder="BLIK / Revolut",
-        required=True,
-        max_length=50
-    )
-    
-    uwagi = ui.TextInput(
-        label="UWAGI DO ZAMÓWIENIA:",
-        placeholder="Dodatkowe wytyczne, szczegóły lub opcjonalne info",
-        style=discord.TextStyle.paragraph,
-        required=False,
-        max_length=500
-    )
-    
-    kod_rabatowy = ui.TextInput(
-        label="CZY POSIADASZ KOD ZNIŻKOWY:",
-        placeholder="Wpisz np. 40-osob lub inny kod rabatowy.",
-        required=False,
-        max_length=50
-    )
-    
-    kod_polecajacy = ui.TextInput(
-        label="CZY POSIADASZ KOD POLECAJĄCY:",
-        placeholder="Jeżeli nie posiadasz, zostaw to pole puste.",
-        required=False,
-        max_length=50
-    )
+    discord_nick = ui.TextInput(label="JAKI JEST TWÓJ DISCORD NICK:", placeholder="np. HakerPro", required=True, max_length=100)
+    platnosc = ui.TextInput(label="METODA PŁATNOŚCI:", placeholder="BLIK / Revolut", required=True, max_length=50)
+    uwagi = ui.TextInput(label="UWAGI DO ZAMÓWIENIA:", placeholder="Dodatkowe wytyczne", style=discord.TextStyle.paragraph, required=False, max_length=500)
+    kod_rabatowy = ui.TextInput(label="KOD ZNIŻKOWY:", placeholder="np. 40-osob", required=False, max_length=50)
+    kod_polecajacy = ui.TextInput(label="KOD POLECAJĄCY:", placeholder="Zostaw puste, jeśli nie masz", required=False, max_length=50)
 
     async def on_submit(self, interaction: discord.Interaction):
         cena_bazowa = self.cena_jednostkowa * self.ilosc
@@ -215,54 +214,31 @@ class ZamowienieModal(ui.Modal, title="HAKEROLANDIA — FORMULARZ ZAMÓWIENIA"):
         znizka_procent = 0
 
         if rabat_tekst:
-            dopasowany_kod = None
-            for k in AKTYWNE_KODY:
-                if k.lower() == rabat_tekst.lower():
-                    dopasowany_kod = k
-                    break
-
+            dopasowany_kod = next((k for k in AKTYWNE_KODY if k.lower() == rabat_tekst.lower()), None)
             if dopasowany_kod:
                 znizka_procent = AKTYWNE_KODY[dopasowany_kod]
                 rabat_tekst = dopasowany_kod
-            else:
-                await interaction.response.send_message(
-                    f"⚠️ Podany kod rabatowy **`{rabat_tekst}`** jest nieprawidłowy lub wygasł. Zamówienie zostanie zrealizowane bez zniżki.",
-                    ephemeral=True
-                )
 
         rabat_kwotowo = (cena_bazowa * znizka_procent) / 100
         cena_calkowita = cena_bazowa - rabat_kwotowo
-
-        polecajacy = self.kod_polecajacy.value if self.kod_polecajacy.value else "Nie podano."
-        tekst_uwag = self.uwagi.value if self.uwagi.value else "Brak uwag."
         informacja_o_rabacie = f"-{znizka_procent}% ({rabat_tekst})" if znizka_procent > 0 else "Brak"
 
         view = PodsumowanieZakupuView(
-            produkt=self.produkt,
-            ilosc=self.ilosc,
-            cena=cena_calkowita,
-            nick=self.discord_nick.value,
-            platnosc=self.platnosc.value,
-            uwagi=tekst_uwag,
-            rabat=informacja_o_rabacie,
-            polecajacy=polecajacy
+            produkt=self.produkt, ilosc=self.ilosc, cena=cena_calkowita,
+            nick=self.discord_nick.value, platnosc=self.platnosc.value,
+            uwagi=self.uwagi.value or "Brak uwag.", rabat=informacja_o_rabacie, polecajacy=self.kod_polecajacy.value or "Nie podano."
         )
 
         tekst = (
-            f"🛒 **HAKEROLANDIA — PODSUMOWANIE ZAMÓWIENIA**\n"
-            f"Poniżej dostępne jest kompletne podsumowanie zamówienia wg. podanych przez Ciebie informacji.\n\n"
-            f"• **{self.ilosc}x {self.produkt}** — **{cena_bazowa:.2f} PLN** [{self.cena_jednostkowa:.2f} PLN/szt.]\n"
-            f"• Zniżka: **{informacja_o_rabacie}**\n\n"
-            f"Uwagi: {tekst_uwag}\n"
-            f"Cena końcowa do zapłaty: **{cena_calkowita:.2f} PLN**\n\n"
-            f"**Wszystko się zgadza?** — Użyj przycisku poniżej i dokonaj płatności."
+            f"🛒 **HAKEROLANDIA — PODSUMOWANIE ZAMÓWIENIA**\n\n"
+            f"• **{self.ilosc}x {self.produkt}** — **{cena_bazowa:.2f} PLN**\n"
+            f"• Zniżka: **{informacja_o_rabacie}**\n"
+            f"• Cena końcowa do zapłaty: **{cena_calkowita:.2f} PLN**\n\n"
+            f"Kliknij przycisk poniżej, aby przejść do płatności."
         )
         await interaction.response.send_message(tekst, view=view, ephemeral=True)
 
 
-# ==============================================================================
-# 5. WIDOK PODSUMOWANIA (Z PRZYCISKIEM DO PŁATNOŚCI)
-# ==============================================================================
 class PodsumowanieZakupuView(ui.View):
     def __init__(self, produkt, ilosc, cena, nick, platnosc, uwagi, rabat, polecajacy):
         super().__init__(timeout=300)
@@ -275,12 +251,7 @@ class PodsumowanieZakupuView(ui.View):
         self.rabat = rabat
         self.polecajacy = polecajacy
 
-        self.add_item(ui.Button(
-            label="Dokonaj płatności przez Tipply", 
-            style=discord.ButtonStyle.link, 
-            url="https://tipply.pl/@hakerroblox", 
-            emoji="💲"
-        ))
+        self.add_item(ui.Button(label="Płatność przez Tipply", style=discord.ButtonStyle.link, url="https://tipply.pl/@hakerroblox", emoji="💲"))
 
     @ui.button(label="✅ Opłaciłem - Utwórz ticket", style=discord.ButtonStyle.green, custom_id="btn_hakerolandia_ticket", row=1)
     async def finalizuj_zamowienie(self, interaction: discord.Interaction, button: ui.Button):
@@ -301,125 +272,72 @@ class PodsumowanieZakupuView(ui.View):
             await interaction.response.send_message("❌ Brak uprawnień do utworzenia kanału ticketa.", ephemeral=True)
             return
 
+        STATYSTYKI_SKLEPU["zamowienia_zrealizowane"] += 1
+
         embed = discord.Embed(title="HAKEROLANDIA — PŁATNOŚĆ I REALIZACJA", color=discord.Color.green())
         embed.add_field(name="Wybrany Pakiet", value=f"{self.ilosc}x {self.produkt} ({self.cena:.2f} PLN)", inline=False)
         embed.add_field(name="Twój Nick", value=self.nick, inline=False)
         embed.add_field(name="Metoda Płatności", value=self.platnosc, inline=False)
-        embed.add_field(name="Uwagi do zamówienia", value=self.uwagi, inline=False)
+        embed.add_field(name="Uwagi", value=self.uwagi, inline=False)
         embed.add_field(name="Kod zniżkowy", value=self.rabat, inline=False)
-        embed.add_field(name="Kod polecający", value=self.polecajacy, inline=False)
 
-        await ticket_channel.send(
-            content=f"🔔 **Witaj {user.mention}!**\n"
-                    f"Zamówienia realizujemy **po kolei** — zgodnie z kolejnością wpłat. ❤️\n"
-                    f"Pozostało Ci tylko **dokonać płatności**, jeżeli przebiegnie ona pomyślnie, zostanie utworzony kanał, na którym administrator przekaże Ci produkt.\n"
-                    f"⏱️ Realizacja do 48h. *(Gdy skończycie, administrator może użyć `/zakoncz`)*",
-            embed=embed
-        )
-
-        await interaction.response.edit_message(
-            content=f"✅ Utworzono dla Ciebie prywatny ticket: {ticket_channel.mention}. Możesz odrzucić tę wiadomość.",
-            view=None
-        )
+        close_view = TicketCloseView()
+        await ticket_channel.send(content=f"🔔 **Witaj {user.mention}!** Zamówienie zarejestrowane.", embed=embed, view=close_view)
+        await interaction.response.edit_message(content=f"✅ Utworzono dla Ciebie prywatny ticket zamówienia: {ticket_channel.mention}.", view=None)
 
 
-# ==============================================================================
-# 6. WYBÓR ILOŚCI SZTUK
-# ==============================================================================
 class WyborIlosciSelectView(ui.View):
     def __init__(self, produkt, cena):
         super().__init__(timeout=None)
         self.produkt = produkt
         self.cena = cena
 
-    @ui.select(
-        placeholder="Wybierz ilość sztuk...",
-        custom_id="select_hakerolandia_ilosc",
-        options=[
-            discord.SelectOption(label="1 szt.", value="1"),
-            discord.SelectOption(label="2 szt.", value="2"),
-        ]
-    )
+    @ui.select(placeholder="Wybierz ilość sztuk...", custom_id="select_hakerolandia_ilosc", options=[
+        discord.SelectOption(label="1 szt.", value="1"),
+        discord.SelectOption(label="2 szt.", value="2"),
+    ])
     async def select_ilosc(self, interaction: discord.Interaction, select: ui.Select):
         ilosc = int(select.values[0])
-        await interaction.response.send_modal(
-            ZamowienieModal(produkt=self.produkt, cena_jednostkowa=self.cena, ilosc=ilosc)
-        )
+        await interaction.response.send_modal(ZamowienieModal(produkt=self.produkt, cena_jednostkowa=self.cena, ilosc=ilosc))
 
 
-# ==============================================================================
-# 7. WYBÓR PAKIETU (PRODUKTU) Z MENU ROZWIJANEGO
-# ==============================================================================
 class WyborProduktuSelectView(ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @ui.select(
-        placeholder="Wybierz pakiet z listy...",
-        custom_id="select_hakerolandia_produkt",
-        options=[
-            discord.SelectOption(label="🟢 START", description="Cena: 19,99 PLN - Max 10 kategorii i 30 kanałów", value="START|19.99"),
-            discord.SelectOption(label="🔵 BASIC", description="Cena: 39,99 PLN - Max 20 kategorii i 50 kanałów", value="BASIC|39.99"),
-            discord.SelectOption(label="🟣 PREMIUM", description="Cena: 69,99 PLN - Nielimitowane kategorie i kanały", value="PREMIUM|69.99"),
-            discord.SelectOption(label="🤖 BOT NA ZAMÓWIENIE", description="Cena: 35,99 PLN - Niestandardowy bot pod zamówienie", value="BOT NA ZAMÓWIENIE|35.99"),
-        ]
-    )
+    @ui.select(placeholder="Wybierz pakiet z listy...", custom_id="select_hakerolandia_produkt", options=[
+        discord.SelectOption(label="🟢 START", description="Cena: 19,99 PLN", value="START|19.99"),
+        discord.SelectOption(label="🔵 BASIC", description="Cena: 39,99 PLN", value="BASIC|39.99"),
+        discord.SelectOption(label="🟣 PREMIUM", description="Cena: 69,99 PLN", value="PREMIUM|69.99"),
+        discord.SelectOption(label="🤖 BOT NA ZAMÓWIENIE", description="Cena: 35,99 PLN", value="BOT NA ZAMÓWIENIE|35.99"),
+    ])
     async def select_produkt(self, interaction: discord.Interaction, select: ui.Select):
         dane = select.values[0].split("|")
-        produkt = dane[0]
-        cena = float(dane[1])
-
-        await interaction.response.send_message(
-            f"🛒 **HAKEROLANDIA — WYBIERZ ILOŚĆ**\n"
-            f"Wybrałeś pakiet: **{produkt}** ({cena} PLN/szt.). Wybierz ilość sztuk z menu poniżej.",
-            view=WyborIlosciSelectView(produkt=produkt, cena=cena),
-            ephemeral=True
-        )
+        await interaction.response.send_message(f"🛒 Wybrałeś pakiet: **{dane[0]}** ({dane[1]} PLN/szt.). Wybierz ilość:", view=WyborIlosciSelectView(produkt=dane[0], cena=float(dane[1])), ephemeral=True)
 
 
-# ==============================================================================
-# 8. PANEL GŁÓWNY (PRZYCISK "ZŁÓŻ ZAMÓWIENIE")
-# ==============================================================================
 class PanelGlownyView(ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
     @ui.button(label="ZŁÓŻ ZAMÓWIENIE", style=discord.ButtonStyle.green, custom_id="btn_hakerolandia_zlozo_zamowienie", emoji="🛒")
     async def zlozo_zamowienie_btn(self, interaction: discord.Interaction, button: ui.Button):
-        await interaction.response.send_message(
-            f"🛒 **HAKEROLANDIA — WYBIERZ PAKIET**\n"
-            f"Wybierz interesujący Cię pakiet z menu poniżej:",
-            view=WyborProduktuSelectView(),
-            ephemeral=True
-        )
+        await interaction.response.send_message(f"🛒 Wybierz interesujący Cię pakiet:", view=WyborProduktuSelectView(), ephemeral=True)
 
 
-# ==============================================================================
-# 9. WIDOK PRZYCISKÓW (YOUTUBE ORAZ STRONA WWW)
-# ==============================================================================
 class YouTubeButtonView(ui.View):
     def __init__(self, link: str):
         super().__init__(timeout=None)
-        self.add_item(ui.Button(
-            label="OGLĄDAJ FILM", 
-            style=discord.ButtonStyle.link, 
-            url=link, 
-            emoji="🎬"
-        ))
+        self.add_item(ui.Button(label="OGLĄDAJ FILM", style=discord.ButtonStyle.link, url=link, emoji="🎬"))
 
 class StronaButtonView(ui.View):
     def __init__(self):
         super().__init__(timeout=None)
-        self.add_item(ui.Button(
-            label="Odwiedź hakerroblox.gamer.gd", 
-            style=discord.ButtonStyle.link, 
-            url="https://hakerroblox.gamer.gd", 
-            emoji="🌐"
-        ))
+        self.add_item(ui.Button(label="Odwiedź hakerroblox.gamer.gd", style=discord.ButtonStyle.link, url="https://hakerroblox.gamer.gd", emoji="🌐"))
 
 
 # ==============================================================================
-# 10. GŁÓWNA KLASA BOTA
+# 4. GŁÓWNA KLASA BOTA (WRAZ Z LICZNIKAMI STATYSTYK)
 # ==============================================================================
 class HakerolandiaBot(commands.Bot):
     def __init__(self):
@@ -433,8 +351,8 @@ class HakerolandiaBot(commands.Bot):
         self.add_view(OpiniePanelView())
         self.add_view(StronaButtonView())
         
-        # Uruchomienie automatycznego sprawdzania YouTube w tle
         self.sprawdz_youtube.start()
+        self.aktualizuj_liczniki_loop.start()
         
         guild_id = os.getenv("GUILD_ID")
         if guild_id:
@@ -448,9 +366,52 @@ class HakerolandiaBot(commands.Bot):
 
     async def on_ready(self):
         logger.info(f"Zalogowano pomyślnie jako {self.user}")
-        await self.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="HAKEROLANDIA | SKLEP SERWEROWY"))
+        await self.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="HAKEROLANDIA | SKLEP"))
 
-    # Pętla działająca w tle (sprawdza YouTube co 1 minutę)
+    @tasks.loop(minutes=10)
+    async def aktualizuj_liczniki_loop(self):
+        for guild in self.guilds:
+            try:
+                # Obliczanie danych
+                member_count = guild.member_count
+                
+                ban_count = 0
+                try:
+                    bans = [b async for b in guild.fetch_bans()]
+                    ban_count = len(bans)
+                except Exception:
+                    pass
+
+                # Najnowszy użytkownik (sortowanie po dacie dołączenia)
+                nowy_user = "Brak"
+                try:
+                    valid_members = [m for m in guild.members if m.joined_at]
+                    if valid_members:
+                        najnowszy = max(valid_members, key=lambda m: m.joined_at)
+                        nowy_user = najnowszy.name
+                except Exception:
+                    pass
+
+                # Szukanie i aktualizacja odpowiednich kanałów głosowych/tekstowych na serwerze
+                for channel in guild.channels:
+                    name_lower = channel.name.lower()
+                    if "członkowie:" in name_lower or "czlonkowie:" in name_lower:
+                        if channel.name != f"Członkowie: {member_count}":
+                            await channel.edit(name=f"Członkowie: {member_count}")
+                    elif "bany:" in name_lower:
+                        if channel.name != f"Bany: {ban_count}":
+                            await channel.edit(name=f"Bany: {ban_count}")
+                    elif "nowy:" in name_lower:
+                        nowy_nazwa_kanalu = f"Nowy: {nowy_user}"
+                        if channel.name != nowy_nazwa_kanalu:
+                            await channel.edit(name=nowy_nazwa_kanalu)
+            except Exception as e:
+                logger.error(f"Błąd w pętli liczników dla gildii {guild.name}: {e}")
+
+    @aktualizuj_liczniki_loop.before_loop
+    async def before_aktualizuj_liczniki(self):
+        await self.wait_until_ready()
+
     @tasks.loop(minutes=1)
     async def sprawdz_youtube(self):
         global ostatnio_wyslany_id
@@ -470,23 +431,15 @@ class HakerolandiaBot(commands.Bot):
 
             if film_id != ostatnio_wyslany_id:
                 ostatnio_wyslany_id = film_id
-                
                 kanal = self.get_channel(KANAL_FILMY_ID)
                 if kanal:
-                    embed = discord.Embed(
-                        title="🎬 NOWY FILM NA YOUTUBE!",
-                        color=0xef4444
-                    )
-                    embed.add_field(name="📌 Typ Publikacji:", value="🎥 Film YouTube", inline=False)
-                    embed.add_field(name="🎬 Tytuł:", value=tytul, inline=False)
-                    embed.add_field(name="🔗 Link:", value=link, inline=False)
-                    embed.set_footer(text="Hakerolandia • Automatyczne powiadomienie")
-                    
+                    embed = discord.Embed(title="🎬 NOWY FILM NA YOUTUBE!", color=0xef4444)
+                    embed.add_field(name="Tytuł:", value=tytul, inline=False)
+                    embed.add_field(name="Link:", value=link, inline=False)
                     view = YouTubeButtonView(link)
                     await kanal.send("@everyone", embed=embed, view=view)
-                    logger.info(f"Wysłano automatyczne powiadomienie o filmie: {tytul}")
         except Exception as e:
-            logger.error(f"Błąd podczas sprawdzania kanału YouTube: {e}")
+            logger.error(f"Błąd YouTube RSS: {e}")
 
     @sprawdz_youtube.before_loop
     async def before_sprawdz_youtube(self):
@@ -497,12 +450,34 @@ bot = HakerolandiaBot()
 
 
 # ==============================================================================
-# 11. KOMENDY SLASH
+# 5. KOMENDY SLASH
 # ==============================================================================
+@bot.tree.command(name="staty-setup", description="Automatycznie tworzy kanały statystyk (Członkowie, Bany, Nowy) (Tylko Admin)")
+async def staty_setup(interaction: discord.Interaction):
+    if not interaction.user.guild_permissions.administrator:
+        await interaction.response.send_message("❌ Brak uprawnień administratora!", ephemeral=True)
+        return
 
-# DODANA KOMENDA /ticket setup z wyborem roli (rola name)
-@bot.tree.command(name="ticket", description="Wysyła panel systemowy ticketów z wybraną rolą obsługi (Tylko Admin)")
-@discord.app_commands.describe(rola="Wybierz rolę administracyjną (rola name), która ma obsługiwać tickety")
+    guild = interaction.guild
+    overwrites = {
+        guild.default_role: discord.PermissionOverwrite(connect=False, view_channel=True)
+    }
+
+    try:
+        c1 = await guild.create_voice_channel(name=f"Członkowie: {guild.member_count}", overwrites=overwrites)
+        c2 = await guild.create_voice_channel(name="Bany: 0", overwrites=overwrites)
+        c3 = await guild.create_voice_channel(name="Nowy: Brak", overwrites=overwrites)
+
+        await interaction.response.send_message(
+            f"✅ Pomyślnie utworzono kanały statystyk:\n• {c1.mention}\n• {c2.mention}\n• {c3.mention}\n\n*Bot zacznie je aktualizować automatycznie w ciągu kilku minut.*",
+            ephemeral=True
+        )
+    except Exception as e:
+        await interaction.response.send_message(f"❌ Wystąpił błąd podczas tworzenia kanałów: {e}", ephemeral=True)
+
+
+@bot.tree.command(name="ticket", description="Wysyła panel systemowy ticketów z wybranymi opcjami (Tylko Admin)")
+@discord.app_commands.describe(rola="Wybierz rolę administracyjną do obsługi ticketów")
 async def ticket_setup(interaction: discord.Interaction, rola: discord.Role):
     if not interaction.user.guild_permissions.administrator:
         await interaction.response.send_message("❌ Brak uprawnień administratora!", ephemeral=True)
@@ -510,197 +485,87 @@ async def ticket_setup(interaction: discord.Interaction, rola: discord.Role):
 
     embed = discord.Embed(
         title="🎫 HAKEROLANDIA — POMOC I TICKET",
-        description="Masz pytanie lub chcesz coś zgłosić? Kliknij poniższy przycisk, aby utworzyć prywatny ticket.",
+        description="Wybierz odpowiednią kategorię z menu poniżej, aby otworzyć prywatny ticket.",
         color=discord.Color.blurple()
     )
     embed.set_footer(text=f"Obsługująca rola: {rola.name}")
 
     view = TicketPanelView(rola_supportu_name=rola.name)
     await interaction.channel.send(embed=embed, view=view)
-    await interaction.response.send_message(f"✅ Pomyślnie wysłano panel ticketów (przypisana rola: **{rola.name}**).", ephemeral=True)
+    await interaction.response.send_message(f"✅ Wysłano panel ticketów z opcjami (rola: **{rola.name}**).", ephemeral=True)
 
 
-@bot.tree.command(name="wyslij-panel", description="Wysyła główny panel składania zamówień Hakerolandia")
+@bot.tree.command(name="statystyki", description="Wyświetla statystyki sklepu Hakerolandia oraz bota")
+async def statystyki(interaction: discord.Interaction):
+    guild = interaction.guild
+    embed = discord.Embed(title="📊 STATYSTYKI HAKEROLANDIA", color=discord.Color.dark_green())
+    embed.add_field(name="🛒 Obsłużone zamówienia", value=str(STATYSTYKI_SKLEPU["zamowienia_zrealizowane"]), inline=True)
+    embed.add_field(name="🎟️ Aktywne kody zniżkowe", value=str(len(AKTYWNE_KODY)), inline=True)
+    embed.add_field(name="👥 Użytkownicy serwera", value=str(guild.member_count if guild else "B/D"), inline=True)
+    embed.add_field(name="⚡ Ping bota", value=f"{round(bot.latency * 1000)} ms", inline=True)
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+@bot.tree.command(name="wyslij-panel", description="Wysyła główny panel składania zamówień")
 async def wyslij_panel(interaction: discord.Interaction):
     if not interaction.user.guild_permissions.administrator:
-        await interaction.response.send_message("❌ Brak uprawnień administratora!", ephemeral=True)
+        await interaction.response.send_message("❌ Brak uprawnień!", ephemeral=True)
         return
-        
-    embed = discord.Embed(
-        title="HAKEROLANDIA — ZŁÓŻ ZAMÓWIENIE",
-        description="W tym miejscu możesz dokonać zamówienia, jesteśmy **największym, najbardziej zaufanym sklepem**.\n\n"
-                    "Wybierz interesujący Cię pakiet, klikając przycisk poniżej.",
-        color=discord.Color.dark_purple()
-    )
-    
-    embed.add_field(name="🟢 START — 19,99 zł", value="• Max 10 kategorii i 30 kanałów", inline=False)
-    embed.add_field(name="🔵 BASIC — 39,99 zł", value="• Max 20 kategorii i 50 kanałów", inline=False)
-    embed.add_field(name="🟣 PREMIUM — 69,99 zł", value="• Nielimitowane kategorie i kanały", inline=False)
-    embed.add_field(name="🤖 BOT NA ZAMÓWIENIE — 35,99 zł", value="• Niestandardowy bot pod zamówienie", inline=False)
-
+    embed = discord.Embed(title="HAKEROLANDIA — ZŁÓŻ ZAMÓWIENIE", description="Wybierz pakiet:", color=discord.Color.dark_purple())
     await interaction.channel.send(embed=embed, view=PanelGlownyView())
-    await interaction.response.send_message("✅ Pomyślnie wysłano panel sklepu Hakerolandia!", ephemeral=True)
+    await interaction.response.send_message("✅ Wysłano panel sklepu!", ephemeral=True)
 
 
-@bot.tree.command(name="wyslij-strone", description="Wysyła informację o oficjalnej stronie internetowej Hakerolandia (Tylko Admin)")
-async def wyslij_strone(interaction: discord.Interaction):
-    if not interaction.user.guild_permissions.administrator:
-        await interaction.response.send_message("❌ Brak uprawnień administratora!", ephemeral=True)
-        return
-
-    embed = discord.Embed(
-        title="Hakerolandia × OFICJALNA STRONA",
-        description=(
-            "➡️ **Zapraszamy do odwiedzenia naszej oficjalnej strony internetowej!**\n\n"
-            "➡️ Znajdziesz tam pełną ofertę naszych usług, szczegółowy cennik oraz aktualności.\n\n"
-            "➡️ **Oficjalny adres:** https://hakerroblox.gamer.gd"
-        ),
-        color=discord.Color.blue()
-    )
-
-    await interaction.channel.send(embed=embed, view=StronaButtonView())
-    await interaction.response.send_message("✅ Pomyślnie wysłano panel strony internetowej!", ephemeral=True)
-
-
-@bot.tree.command(name="kod-losuj", description="Losuje zniżkę od 5% do 20% i rejestruje aktywny kod (Tylko Admin)")
+@bot.tree.command(name="kod-losuj", description="Losuje zniżkę i rejestruje aktywny kod (Tylko Admin)")
 async def kod_losuj(interaction: discord.Interaction):
     if not interaction.user.guild_permissions.administrator:
-        await interaction.response.send_message("❌ Brak uprawnień administratora!", ephemeral=True)
+        await interaction.response.send_message("❌ Brak uprawnień!", ephemeral=True)
         return
-
     znizka = random.randint(5, 20)
     kod = "PROMO-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
     AKTYWNE_KODY[kod] = znizka
-
-    embed = discord.Embed(
-        title="🎲 WYLOSOWANO NOWY KOD ZNIŻKOWY",
-        description=f"Pomyślnie wygenerowano i dodano kod do systemu bota!",
-        color=discord.Color.green()
-    )
-    embed.add_field(name="Kod rabatowy", value=f"`{kod}`", inline=True)
-    embed.add_field(name="Wysokość zniżki", value=f"**-{znizka}%**", inline=True)
-    embed.set_footer(text="Klient może teraz wpisać ten kod podczas składania zamówienia.")
-
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    await interaction.response.send_message(f"🎲 Wylosowano kod: `{kod}` | Zniżka: **-{znizka}%**", ephemeral=True)
 
 
 @bot.tree.command(name="cennik", description="Wyświetla oficjalny cennik Hakerolandia")
 async def cennik(interaction: discord.Interaction):
-    embed = discord.Embed(
-        title="📑 CENNIK HAKEROLANDIA",
-        description=(
-            "**HAKEROLANDIA**\n\n"
-            "⚠️ **UWAGA!**\n"
-            "Zamówienia realizujemy **PO KOLEI** — zgodnie z kolejnością wpłat. ❤️\n\n"
-            "🟢 **START — 19,99 zł**\n"
-            "• Max 10 kategorii i 30 kanałów\n"
-            "• Podstawowe rangi\n"
-            "• Lobby\n"
-            "• Zabezpieczenia\n"
-            "• Własne preferencje\n\n"
-            "🔵 **BASIC — 39,99 zł**\n"
-            "• Max 20 kategorii i 50 kanałów\n"
-            "• Rangi użytkowników i administracji\n"
-            "• Ekonomia + sklep\n"
-            "• Selfrole\n"
-            "• Invite Logger\n"
-            "• Lobby + statystyki\n"
-            "• Zabezpieczenia\n\n"
-            "🟣 **PREMIUM — 69,99 zł**\n"
-            "• Nielimitowane kategorie i kanały\n"
-            "• Rozbudowane rangi\n"
-            "• Ekonomia + sklep\n"
-            "• Logi + statystyki\n"
-            "• Zaawansowane zabezpieczenia\n"
-            "• Lobby + regulamin\n"
-            "• Pomoc w rozwoju serwera\n\n"
-            "🤖 **BOT NA ZAMÓWIENIE — 35,99 zł**\n"
-            "• Niestandardowy bot pod zamówienie\n\n"
-            "💳 **PŁATNOŚĆ**\n"
-            "BLIK • Revolut\n\n"
-            "⏱️ Realizacja do 48h\n"
-            "⭐ Po odbiorze możesz zostawić opinię!\n"
-            "━━━━━━━━━━━━━━━━━━\n"
-            "🔥 **HAKEROLANDIA**\n"
-            "Twój pomysł. Nasza realizacja.\n"
-            "━━━━━━━━━━━━━━━━━━"
-        ),
-        color=discord.Color.blurple()
-    )
+    embed = discord.Embed(title="📑 CENNIK HAKEROLANDIA", description="🟢 START (19.99zł)\n🔵 BASIC (39.99zł)\n🟣 PREMIUM (69.99zł)\n🤖 BOT NA ZAMÓWIENIE (35.99zł)", color=discord.Color.blurple())
     await interaction.response.send_message(embed=embed)
 
 
 @bot.tree.command(name="wyslij-opinie", description="Wysyła panel wystawiania opinii (Tylko Admin)")
 async def wyslij_opinie(interaction: discord.Interaction):
     if not interaction.user.guild_permissions.administrator:
-        await interaction.response.send_message("❌ Brak uprawnień administratora!", ephemeral=True)
+        await interaction.response.send_message("❌ Brak uprawnień!", ephemeral=True)
         return
-
-    embed = discord.Embed(
-        title="HAKEROLANDIA × WYSTAW NAM OPINIĘ",
-        description="» Wystawiając opinię pokazujesz innym, jak przebiegła Twoja obsługa.\n» Kliknij przycisk poniżej.",
-        color=discord.Color.blurple()
-    )
+    embed = discord.Embed(title="HAKEROLANDIA — OPINIE", description="Kliknij, aby wystawić opinię.", color=discord.Color.blurple())
     await interaction.channel.send(embed=embed, view=OpiniePanelView())
-    await interaction.response.send_message("✅ Pomyślnie wysłano panel opinii!", ephemeral=True)
+    await interaction.response.send_message("✅ Wysłano panel opinii!", ephemeral=True)
 
 
 @bot.tree.command(name="opinie", description="Otwiera panel wystawiania opinii")
 async def opinie(interaction: discord.Interaction):
-    rola_klient = discord.utils.get(interaction.guild.roles, name="⭐• Klient")
+    rola_klient = discord.utils.get(interaction.guild.roles, name="⭐ • Klient")
     if not rola_klient or rola_klient not in interaction.user.roles:
-        await interaction.response.send_message("❌ Brak wymaganej rangi **⭐• Klient**.", ephemeral=True)
+        await interaction.response.send_message("❌ Brak rangi **⭐ • Klient**.", ephemeral=True)
         return
     await interaction.response.send_modal(OpiniaModal())
 
 
-@bot.tree.command(name="wyslij-weryfikacje", description="Wysyła panel weryfikacji CAPTCHA (Tylko Admin)")
+@bot.tree.command(name="wyslij-weryfikacje", description="Wysyła weryfikację CAPTCHA (Tylko Admin)")
 async def wyslij_weryfikacje(interaction: discord.Interaction):
     if not interaction.user.guild_permissions.administrator:
-        await interaction.response.send_message("❌ Brak uprawnień administratora!", ephemeral=True)
+        await interaction.response.send_message("❌ Brak uprawnień!", ephemeral=True)
         return
-        
-    embed = discord.Embed(
-        title="🛡️ Panel Weryfikacyjny Serwera",
-        description=(
-            "Witaj! Aby zapobiec automatycznym botom i kontom rajdowym, wymagane jest przejście weryfikacji.\n\n"
-            "**Wymagania systemowe:**\n"
-            "• Wiek konta: minimum 7 dni\n"
-            "• Ustawione zdjęcie profilowe (Avatar)\n"
-            "• Prawidłowa weryfikacja przyciskiem\n\n"
-            "Kliknij poniższy przycisk, aby zweryfikować konto i uzyskać dostęp do serwera."
-        ),
-        color=discord.Color.gold()
-    )
-    embed.set_footer(text="System Bezpieczeństwa Hakerolandia")
-
+    embed = discord.Embed(title="🛡️ Weryfikacja", description="Kliknij przycisk, aby się zweryfikować.", color=discord.Color.gold())
     await interaction.channel.send(embed=embed, view=CaptchaView())
-    await interaction.response.send_message("✅ Pomyślnie wysłano panel weryfikacji!", ephemeral=True)
+    await interaction.response.send_message("✅ Wysłano weryfikację!", ephemeral=True)
 
 
-@bot.tree.command(name="zakoncz", description="Zamyka i usuwa bieżący ticket zamówienia (Tylko Admin)")
-async def zakoncz(interaction: discord.Interaction):
-    if not interaction.user.guild_permissions.administrator:
-        await interaction.response.send_message("❌ Brak uprawnień administratora!", ephemeral=True)
-        return
-        
-    embed = discord.Embed(title="HAKEROLANDIA — ZAMÓWIENIE ZREALIZOWANE", description="Dziękujemy za zakupy! Kanał zostanie usunięty za 5 sekund.", color=discord.Color.green())
-    await interaction.channel.send(embed=embed)
-    await interaction.response.send_message("✅ Zamykanie ticketa...", ephemeral=True)
-    await asyncio.sleep(5)
-    try:
-        await interaction.channel.delete()
-    except Exception as e:
-        logger.error(f"Błąd usuwania kanału: {e}")
-
-
-# ==============================================================================
-# 12. START APLIKACJI
-# ==============================================================================
 def main():
     token = os.getenv("DISCORD_TOKEN")
     if not token:
-        logger.critical("KRYTYCZNY BŁĄD: Brak zmiennej DISCORD_TOKEN w konfiguracji!")
+        logger.critical("KRYTYCZNY BŁĄD: Brak zmiennej DISCORD_TOKEN!")
         return
     bot.run(token)
 
