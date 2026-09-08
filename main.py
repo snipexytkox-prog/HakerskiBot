@@ -493,7 +493,7 @@ bot = HakerolandiaBot()
 
 
 # ==============================================================================
-# 5. KOMENDY SLASH (WSZYSTKIE PANELE POSIADAJĄ OBRAZEK_URL)
+# 5. KOMENDY SLASH (Z AUTOMATYCZNYMI BANERAMI OBRAZKOWYMI)
 # ==============================================================================
 @bot.tree.command(name="staty-setup", description="Automatycznie tworzy kategorię statystyk na samej górze (Tylko Admin)")
 async def staty_setup(interaction: discord.Interaction):
@@ -523,10 +523,10 @@ async def staty_setup(interaction: discord.Interaction):
         await interaction.response.send_message(f"❌ Wystąpił błąd podczas tworzenia statystyk: {e}", ephemeral=True)
 
 
-@bot.tree.command(name="ticket", description="Wysyła panel systemowy ticketów z kategoriami i grafiką (Tylko Admin)")
+@bot.tree.command(name="ticket", description="Wysyła panel systemowy ticketów z automatycznym banerem (Tylko Admin)")
 @discord.app_commands.describe(
     rola="Wybierz rolę administracyjną do obsługi ticketów",
-    obrazek_url="Opcjonalny link (URL) do obrazka/logo Hakerolandii"
+    obrazek_url="Opcjonalny własny link (URL) do obrazka"
 )
 async def ticket_setup(interaction: discord.Interaction, rola: discord.Role, obrazek_url: str = None):
     if not interaction.user.guild_permissions.administrator:
@@ -540,16 +540,17 @@ async def ticket_setup(interaction: discord.Interaction, rola: discord.Role, obr
     )
     embed.set_footer(text=f"Obsługująca rola: {rola.name} | Hakerolandia")
     
-    if obrazek_url:
-        embed.set_image(url=obrazek_url)
+    # Automatyczny lub własny obrazek
+    banner = obrazek_url if obrazek_url else "https://i.imgur.com/kv9wr5k.jpg"
+    embed.set_image(url=banner)
 
     view = TicketPanelView(rola_supportu_name=rola.name)
     await interaction.channel.send(embed=embed, view=view)
     await interaction.response.send_message(f"✅ Wysłano panel ticketów Hakerolandia (rola: **{rola.name}**).", ephemeral=True)
 
 
-@bot.tree.command(name="wyslij-panel", description="Wysyła główny panel składania zamówień z opcjonalną grafiką")
-@discord.app_commands.describe(obrazek_url="Opcjonalny link (URL) do grafiki/logo sklepu")
+@bot.tree.command(name="wyslij-panel", description="Wysyła główny panel składania zamówień z automatycznym banerem")
+@discord.app_commands.describe(obrazek_url="Opcjonalny własny link (URL) do grafiki sklepu")
 async def wyslij_panel(interaction: discord.Interaction, obrazek_url: str = None):
     if not interaction.user.guild_permissions.administrator:
         await interaction.response.send_message("❌ Brak uprawnień!", ephemeral=True)
@@ -557,18 +558,19 @@ async def wyslij_panel(interaction: discord.Interaction, obrazek_url: str = None
     
     embed = discord.Embed(
         title="HAKEROLANDIA — ZŁÓŻ ZAMÓWIENIE", 
-        description="Wybierz pakiet:", 
+        description="Wybierz pakiet z poniższej listy:", 
         color=discord.Color.dark_purple()
     )
-    if obrazek_url:
-        embed.set_image(url=obrazek_url)
+    
+    banner = obrazek_url if obrazek_url else "https://i.imgur.com/kv9wr5k.jpg"
+    embed.set_image(url=banner)
         
     await interaction.channel.send(embed=embed, view=PanelGlownyView())
     await interaction.response.send_message("✅ Wysłano panel sklepu Hakerolandii!", ephemeral=True)
 
 
-@bot.tree.command(name="wyslij-opinie", description="Wysyła panel wystawiania opinii z opcjonalną grafiką (Tylko Admin)")
-@discord.app_commands.describe(obrazek_url="Opcjonalny link (URL) do grafiki/logo opinii")
+@bot.tree.command(name="wyslij-opinie", description="Wysyła panel wystawiania opinii z automatycznym banerem (Tylko Admin)")
+@discord.app_commands.describe(obrazek_url="Opcjonalny własny link (URL) do grafiki opinii")
 async def wyslij_opinie(interaction: discord.Interaction, obrazek_url: str = None):
     if not interaction.user.guild_permissions.administrator:
         await interaction.response.send_message("❌ Brak uprawnień!", ephemeral=True)
@@ -576,18 +578,19 @@ async def wyslij_opinie(interaction: discord.Interaction, obrazek_url: str = Non
     
     embed = discord.Embed(
         title="HAKEROLANDIA — OPINIE", 
-        description="Kliknij poniższy przycisk, aby wystawić opinię.", 
+        description="Kliknij poniższy przycisk, aby wystawić opinię o zamówieniu.", 
         color=discord.Color.blurple()
     )
-    if obrazek_url:
-        embed.set_image(url=obrazek_url)
+    
+    banner = obrazek_url if obrazek_url else "https://i.imgur.com/kv9wr5k.jpg"
+    embed.set_image(url=banner)
         
     await interaction.channel.send(embed=embed, view=OpiniePanelView())
     await interaction.response.send_message("✅ Wysłano panel opinii Hakerolandii!", ephemeral=True)
 
 
-@bot.tree.command(name="wyslij-weryfikacje", description="Wysyła weryfikację CAPTCHA z opcjonalną grafiką (Tylko Admin)")
-@discord.app_commands.describe(obrazek_url="Opcjonalny link (URL) do grafiki/logo weryfikacji")
+@bot.tree.command(name="wyslij-weryfikacje", description="Wysyła weryfikację CAPTCHA z automatycznym banerem (Tylko Admin)")
+@discord.app_commands.describe(obrazek_url="Opcjonalny własny link (URL) do grafiki weryfikacji")
 async def wyslij_weryfikacje(interaction: discord.Interaction, obrazek_url: str = None):
     if not interaction.user.guild_permissions.administrator:
         await interaction.response.send_message("❌ Brak uprawnień!", ephemeral=True)
@@ -595,11 +598,12 @@ async def wyslij_weryfikacje(interaction: discord.Interaction, obrazek_url: str 
     
     embed = discord.Embed(
         title="🛡️ HAKEROLANDIA — Weryfikacja", 
-        description="Kliknij przycisk poniżej, aby się zweryfikować.", 
+        description="Kliknij przycisk poniżej, aby pomyślnie zweryfikować swoje konto.", 
         color=discord.Color.gold()
     )
-    if obrazek_url:
-        embed.set_image(url=obrazek_url)
+    
+    banner = obrazek_url if obrazek_url else "https://i.imgur.com/kv9wr5k.jpg"
+    embed.set_image(url=banner)
         
     await interaction.channel.send(embed=embed, view=CaptchaView())
     await interaction.response.send_message("✅ Wysłano weryfikację!", ephemeral=True)
