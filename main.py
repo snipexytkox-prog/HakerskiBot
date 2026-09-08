@@ -61,7 +61,7 @@ class CaptchaView(ui.View):
 
 
 # ==============================================================================
-# 1B. ZAAWANSOWANY SYSTEM TICKETÓW (FORMULARZ MODAL)
+# 1B. ZAAWANSOWANY SYSTEM TICKETÓW (KATEGORIE + FORMULARZ MODAL)
 # ==============================================================================
 class TicketCloseView(ui.View):
     def __init__(self):
@@ -70,7 +70,7 @@ class TicketCloseView(ui.View):
     @ui.button(label="🔒 Zamknij Ticket", style=discord.ButtonStyle.danger, custom_id="btn_zamknij_ticket_hakerolandia", emoji="🗑️")
     async def zamknij_ticket(self, interaction: discord.Interaction, button: ui.Button):
         if not interaction.user.guild_permissions.manage_channels:
-            if not any(interaction.channel.name.startswith(p) for p in ["ticket-", "zamówienie-", "pomoc-", "pytania-"]):
+            if not any(interaction.channel.name.startswith(p) for p in ["ticket-", "zamówienie-", "pomoc-", "pytania-", "nagroda-"]):
                 await interaction.response.send_message("❌ Nie masz uprawnień do zamknięcia tego ticketa.", ephemeral=True)
                 return
 
@@ -83,10 +83,13 @@ class TicketCloseView(ui.View):
             logger.error(f"Błąd usuwania kanału ticketa: {e}")
 
 
-class TicketModal(ui.Modal, title="HAKEROLANDIA — NOWY TICKET"):
-    def __init__(self, rola_supportu_name: str):
-        super().__init__()
+class TicketModal(ui.Modal):
+    def __init__(self, rola_supportu_name: str, tytul_kategorii: str, prefix: str, emoji: str):
+        super().__init__(title=f"HAKEROLANDIA — {emoji} {tytul_kategorii}")
         self.rola_supportu_name = rola_supportu_name
+        self.tytul_kategorii = tytul_kategorii
+        self.prefix = prefix
+        self.emoji = emoji
 
     temat = ui.TextInput(
         label="Temat Zgłoszenia:",
@@ -97,7 +100,7 @@ class TicketModal(ui.Modal, title="HAKEROLANDIA — NOWY TICKET"):
     
     opis = ui.TextInput(
         label="Opis zgłoszenia:",
-        placeholder="Opisz dokładnie swój problem lub pytanie...",
+        placeholder="Opisz dokładnie swój problem lub szczegóły...",
         style=discord.TextStyle.paragraph,
         required=True,
         max_length=500
@@ -118,7 +121,7 @@ class TicketModal(ui.Modal, title="HAKEROLANDIA — NOWY TICKET"):
         if rola_supportu:
             overwrites[rola_supportu] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True)
 
-        channel_name = f"ticket-{user.name}"
+        channel_name = f"{self.prefix}-{user.name}"
         
         try:
             ticket_channel = await guild.create_text_channel(name=channel_name, overwrites=overwrites)
@@ -128,7 +131,7 @@ class TicketModal(ui.Modal, title="HAKEROLANDIA — NOWY TICKET"):
             return
 
         embed = discord.Embed(
-            title="🎫 Ticket Zgłoszeniowy",
+            title=f"{self.emoji} Ticket Zgłoszeniowy — {self.tytul_kategorii}",
             description=f"Witaj {user.mention}!\n\n"
                         f"📌 **Temat Zgłoszenia:** {self.temat.value}\n"
                         f"📝 **Opis zgłoszenia:**\n{self.opis.value}\n\n"
@@ -143,14 +146,53 @@ class TicketModal(ui.Modal, title="HAKEROLANDIA — NOWY TICKET"):
         await interaction.response.send_message(f"✅ Utworzono dla Ciebie ticket: {ticket_channel.mention}", ephemeral=True)
 
 
+class TicketSelect(ui.Select):
+    def __init__(self, rola_supportu_name: str):
+        self.rola_supportu_name = rola_supportu_name
+        options = [
+            discord.SelectOption(
+                label="Pomoc & Wsparcie", 
+                description="Problemy techniczne, zgłoszenia i pomoc", 
+                emoji="🛠️", 
+                value="pomoc"
+            ),
+            discord.SelectOption(
+                label="Pytania Ogólne", 
+                description="Ogólne pytania i informacje o serwerze", 
+                emoji="❓", 
+                value="pytania"
+            ),
+            discord.SelectOption(
+                label="Odebranie Nagrody", 
+                description="Odbierz swoją nagrodę z konkursu lub eventu", 
+                emoji="🎁", 
+                value="nagroda"
+            ),
+        ]
+        super().__init__(placeholder="Wybierz kategorię zgłoszenia...", custom_id="select_hakerolandia_ticket_temat", options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        wybor = self.values[0]
+        if wybor == "pomoc":
+            tytul = "Pomoc & Wsparcie"
+            prefix = "pomoc"
+            emoji = "🛠️"
+        elif wybor == "pytania":
+            tytul = "Pytania Ogólne"
+            prefix = "pytania"
+            emoji = "❓"
+        else:
+            tytul = "Odebranie Nagrody"
+            prefix = "nagroda"
+            emoji = "🎁"
+
+        await interaction.response.send_modal(TicketModal(self.rola_supportu_name, tytul, prefix, emoji))
+
+
 class TicketPanelView(ui.View):
     def __init__(self, rola_supportu_name: str = "Support"):
         super().__init__(timeout=None)
-        self.rola_supportu_name = rola_supportu_name
-
-    @ui.button(label="Otwórz Ticket", style=discord.ButtonStyle.primary, custom_id="btn_hakerolandia_otworz_ticket", emoji="🎫")
-    async def otworz_ticket_btn(self, interaction: discord.Interaction, button: ui.Button):
-        await interaction.response.send_modal(TicketModal(self.rola_supportu_name))
+        self.add_item(TicketSelect(rola_supportu_name))
 
 
 # ==============================================================================
@@ -481,7 +523,7 @@ async def staty_setup(interaction: discord.Interaction):
         await interaction.response.send_message(f"❌ Wystąpił błąd podczas tworzenia statystyk: {e}", ephemeral=True)
 
 
-@bot.tree.command(name="ticket", description="Wysyła panel systemowy ticketów (Tylko Admin)")
+@bot.tree.command(name="ticket", description="Wysyła panel systemowy ticketów z kategoriami (Tylko Admin)")
 @discord.app_commands.describe(rola="Wybierz rolę administracyjną do obsługi ticketów")
 async def ticket_setup(interaction: discord.Interaction, rola: discord.Role):
     if not interaction.user.guild_permissions.administrator:
@@ -490,14 +532,14 @@ async def ticket_setup(interaction: discord.Interaction, rola: discord.Role):
 
     embed = discord.Embed(
         title="🎫 HAKEROLANDIA — POMOC I TICKET",
-        description="Kliknij przycisk poniżej, aby otworzyć formularz i wysłać zgłoszenie do administracji.",
+        description="Wybierz odpowiednią kategorię z menu poniżej, aby otworzyć formularz zgłoszeniowy.",
         color=discord.Color.blurple()
     )
     embed.set_footer(text=f"Obsługująca rola: {rola.name}")
 
     view = TicketPanelView(rola_supportu_name=rola.name)
     await interaction.channel.send(embed=embed, view=view)
-    await interaction.response.send_message(f"✅ Wysłano panel ticketów (rola: **{rola.name}**).", ephemeral=True)
+    await interaction.response.send_message(f"✅ Wysłano panel ticketów z menu wyboru (rola: **{rola.name}**).", ephemeral=True)
 
 
 @bot.tree.command(name="statystyki", description="Wyświetla statystyki sklepu Hakerolandia oraz bota")
