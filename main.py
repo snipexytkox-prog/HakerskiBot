@@ -372,8 +372,9 @@ class HakerolandiaBot(commands.Bot):
     async def aktualizuj_liczniki_loop(self):
         for guild in self.guilds:
             try:
-                # Obliczanie danych
-                member_count = guild.member_count
+                # Liczba widzów (tylko użytkownicy bez botów) oraz botów
+                widzowie_count = len([m for m in guild.members if not m.bot])
+                boty_count = len([m for m in guild.members if m.bot])
                 
                 ban_count = 0
                 try:
@@ -382,7 +383,6 @@ class HakerolandiaBot(commands.Bot):
                 except Exception:
                     pass
 
-                # Najnowszy użytkownik (sortowanie po dacie dołączenia)
                 nowy_user = "Brak"
                 try:
                     valid_members = [m for m in guild.members if m.joined_at]
@@ -392,19 +392,24 @@ class HakerolandiaBot(commands.Bot):
                 except Exception:
                     pass
 
-                # Szukanie i aktualizacja odpowiednich kanałów głosowych/tekstowych na serwerze
                 for channel in guild.channels:
                     name_lower = channel.name.lower()
-                    if "członkowie:" in name_lower or "czlonkowie:" in name_lower:
-                        if channel.name != f"Członkowie: {member_count}":
-                            await channel.edit(name=f"Członkowie: {member_count}")
-                    elif "bany:" in name_lower:
-                        if channel.name != f"Bany: {ban_count}":
-                            await channel.edit(name=f"Bany: {ban_count}")
-                    elif "nowy:" in name_lower:
-                        nowy_nazwa_kanalu = f"Nowy: {nowy_user}"
-                        if channel.name != nowy_nazwa_kanalu:
-                            await channel.edit(name=nowy_nazwa_kanalu)
+                    if "widzowie" in name_lower:
+                        nowa_nazwa = f"Widzowie 🧑🏼 : {widzowie_count}"
+                        if channel.name != nowa_nazwa:
+                            await channel.edit(name=nowa_nazwa)
+                    elif "boty" in name_lower:
+                        nowa_nazwa = f"Boty 🤖 : {boty_count}"
+                        if channel.name != nowa_nazwa:
+                            await channel.edit(name=nowa_nazwa)
+                    elif "bany" in name_lower:
+                        nowa_nazwa = f"Bany : {ban_count}"
+                        if channel.name != nowa_nazwa:
+                            await channel.edit(name=nowa_nazwa)
+                    elif "nowy" in name_lower:
+                        nowa_nazwa = f"Nowy : {nowy_user}"
+                        if channel.name != nowa_nazwa:
+                            await channel.edit(name=nowa_nazwa)
             except Exception as e:
                 logger.error(f"Błąd w pętli liczników dla gildii {guild.name}: {e}")
 
@@ -452,7 +457,7 @@ bot = HakerolandiaBot()
 # ==============================================================================
 # 5. KOMENDY SLASH
 # ==============================================================================
-@bot.tree.command(name="staty-setup", description="Automatycznie tworzy kanały statystyk (Członkowie, Bany, Nowy) (Tylko Admin)")
+@bot.tree.command(name="staty-setup", description="Automatycznie tworzy kategorię i kanały statystyk z emotkami (Tylko Admin)")
 async def staty_setup(interaction: discord.Interaction):
     if not interaction.user.guild_permissions.administrator:
         await interaction.response.send_message("❌ Brak uprawnień administratora!", ephemeral=True)
@@ -464,16 +469,23 @@ async def staty_setup(interaction: discord.Interaction):
     }
 
     try:
-        c1 = await guild.create_voice_channel(name=f"Członkowie: {guild.member_count}", overwrites=overwrites)
-        c2 = await guild.create_voice_channel(name="Bany: 0", overwrites=overwrites)
-        c3 = await guild.create_voice_channel(name="Nowy: Brak", overwrites=overwrites)
+        # Tworzenie dedykowanej kategorii ze statystykami
+        kategoria = await guild.create_category(name="📈 | ----statystyki----")
+
+        # Tworzenie kanałów głosowych wewnątrz kategorii
+        c1 = await guild.create_voice_channel(name="Widzowie 🧑🏼 : 0", category=kategoria, overwrites=overwrites)
+        c2 = await guild.create_voice_channel(name="Boty 🤖 : 0", category=kategoria, overwrites=overwrites)
+        c3 = await guild.create_voice_channel(name="Bany : 0", category=kategoria, overwrites=overwrites)
+        c4 = await guild.create_voice_channel(name="Nowy : Brak", category=kategoria, overwrites=overwrites)
 
         await interaction.response.send_message(
-            f"✅ Pomyślnie utworzono kanały statystyk:\n• {c1.mention}\n• {c2.mention}\n• {c3.mention}\n\n*Bot zacznie je aktualizować automatycznie w ciągu kilku minut.*",
+            f"✅ Pomyślnie utworzono kategorię **📈 | ----statystyki----** i kanały:\n"
+            f"• {c1.mention}\n• {c2.mention}\n• {c3.mention}\n• {c4.mention}\n\n"
+            f"*Bot zaktualizuje ich liczbę w ciągu kilku minut.*",
             ephemeral=True
         )
     except Exception as e:
-        await interaction.response.send_message(f"❌ Wystąpił błąd podczas tworzenia kanałów: {e}", ephemeral=True)
+        await interaction.response.send_message(f"❌ Wystąpił błąd podczas tworzenia statystyk: {e}", ephemeral=True)
 
 
 @bot.tree.command(name="ticket", description="Wysyła panel systemowy ticketów z wybranymi opcjami (Tylko Admin)")
