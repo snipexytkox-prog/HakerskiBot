@@ -361,6 +361,36 @@ class PanelGlownyView(ui.View):
     async def zlozo_zamowienie_btn(self, interaction: discord.Interaction, button: ui.Button):
         await interaction.response.send_message(f"🛒 Wybierz interesujący Cię pakiet w Hakerolandii:", view=WyborProduktuSelectView(), ephemeral=True)
 
+    @ui.button(label="CENNIK", style=discord.ButtonStyle.blurple, custom_id="btn_hakerolandia_pokaz_cennik", emoji="📋")
+    async def pokaz_cennik_btn(self, interaction: discord.Interaction, button: ui.Button):
+        embed = discord.Embed(
+            title="🛒 CENNIK HAKEROLANDIA",
+            description="> *Oficjalne ceny i pakiety dostępne w Hakerolandii:*",
+            color=0x2b2d31
+        )
+        embed.add_field(
+            name="🟢 PAKIET START",
+            value="> **Cena:** `19.99 PLN`\n> • Podstawowy zestaw usług\n> • Szybka realizacja zamówienia",
+            inline=False
+        )
+        embed.add_field(
+            name="🔵 PAKIET BASIC",
+            value="> **Cena:** `39.99 PLN`\n> • Rozszerzony pakiet opcji\n> • Priorytet w kolejce realizacji",
+            inline=False
+        )
+        embed.add_field(
+            name="🟣 PAKIET PREMIUM",
+            value="> **Cena:** `69.99 PLN`\n> • Pełny pakiet VIP\n> • Najwyższy priorytet realizacji",
+            inline=False
+        )
+        embed.add_field(
+            name="🤖 BOT NA ZAMÓWIENIE",
+            value="> **Cena:** `35.99 PLN`\n> • Indywidualny bot pod Twoje preferencje",
+            inline=False
+        )
+        embed.set_footer(text="Hakerolandia • Płatności: BLIK / Revolut / Tipply 💎")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
 
 class YouTubeButtonView(ui.View):
     def __init__(self, link: str):
@@ -374,7 +404,7 @@ class StronaButtonView(ui.View):
 
 
 # ==============================================================================
-# 4. GŁÓWNA KLASA BOTA (WRAZ Z LICZNIKAMI STATYSTYK)
+# 4. GŁÓWNA KLASA BOTA
 # ==============================================================================
 class HakerolandiaBot(commands.Bot):
     def __init__(self):
@@ -493,7 +523,7 @@ bot = HakerolandiaBot()
 
 
 # ==============================================================================
-# 5. KOMENDY SLASH (Z AUTOMATYCZNYMI BANERAMI OBRAZKOWYMI)
+# 5. KOMENDY SLASH
 # ==============================================================================
 @bot.tree.command(name="staty-setup", description="Automatycznie tworzy kategorię statystyk na samej górze (Tylko Admin)")
 async def staty_setup(interaction: discord.Interaction):
@@ -523,10 +553,10 @@ async def staty_setup(interaction: discord.Interaction):
         await interaction.response.send_message(f"❌ Wystąpił błąd podczas tworzenia statystyk: {e}", ephemeral=True)
 
 
-@bot.tree.command(name="ticket", description="Wysyła panel systemowy ticketów z automatycznym banerem (Tylko Admin)")
+@bot.tree.command(name="ticket", description="Wysyła panel systemowy ticketów z banerem (Tylko Admin)")
 @discord.app_commands.describe(
     rola="Wybierz rolę administracyjną do obsługi ticketów",
-    obrazek_url="Opcjonalny własny link (URL) do obrazka"
+    obrazek_url="Opcjonalny link do obrazka (baner)"
 )
 async def ticket_setup(interaction: discord.Interaction, rola: discord.Role, obrazek_url: str = None):
     if not interaction.user.guild_permissions.administrator:
@@ -539,18 +569,16 @@ async def ticket_setup(interaction: discord.Interaction, rola: discord.Role, obr
         color=discord.Color.blurple()
     )
     embed.set_footer(text=f"Obsługująca rola: {rola.name} | Hakerolandia")
-    
-    # Automatyczny lub własny obrazek
-    banner = obrazek_url if obrazek_url else "https://i.imgur.com/kv9wr5k.jpg"
-    embed.set_image(url=banner)
+    if obrazek_url:
+        embed.set_image(url=obrazek_url)
 
     view = TicketPanelView(rola_supportu_name=rola.name)
     await interaction.channel.send(embed=embed, view=view)
-    await interaction.response.send_message(f"✅ Wysłano panel ticketów Hakerolandia (rola: **{rola.name}**).", ephemeral=True)
+    await interaction.response.send_message(f"✅ Wysłano panel ticketów (rola: **{rola.name}**).", ephemeral=True)
 
 
-@bot.tree.command(name="wyslij-panel", description="Wysyła główny panel składania zamówień z automatycznym banerem")
-@discord.app_commands.describe(obrazek_url="Opcjonalny własny link (URL) do grafiki sklepu")
+@bot.tree.command(name="wyslij-panel", description="Wysyła główny panel składania zamówień z banerem i przyciskiem cennika")
+@discord.app_commands.describe(obrazek_url="Opcjonalny link do grafiki sklepu")
 async def wyslij_panel(interaction: discord.Interaction, obrazek_url: str = None):
     if not interaction.user.guild_permissions.administrator:
         await interaction.response.send_message("❌ Brak uprawnień!", ephemeral=True)
@@ -558,19 +586,18 @@ async def wyslij_panel(interaction: discord.Interaction, obrazek_url: str = None
     
     embed = discord.Embed(
         title="HAKEROLANDIA — ZŁÓŻ ZAMÓWIENIE", 
-        description="Wybierz pakiet z poniższej listy:", 
+        description="Wybierz pakiet z poniższej listy lub sprawdź cennik:", 
         color=discord.Color.dark_purple()
     )
-    
-    banner = obrazek_url if obrazek_url else "https://i.imgur.com/kv9wr5k.jpg"
-    embed.set_image(url=banner)
+    if obrazek_url:
+        embed.set_image(url=obrazek_url)
         
     await interaction.channel.send(embed=embed, view=PanelGlownyView())
-    await interaction.response.send_message("✅ Wysłano panel sklepu Hakerolandii!", ephemeral=True)
+    await interaction.response.send_message("✅ Wysłano główny panel sklepu!", ephemeral=True)
 
 
-@bot.tree.command(name="wyslij-opinie", description="Wysyła panel wystawiania opinii z automatycznym banerem (Tylko Admin)")
-@discord.app_commands.describe(obrazek_url="Opcjonalny własny link (URL) do grafiki opinii")
+@bot.tree.command(name="wyslij-opinie", description="Wysyła panel wystawiania opinii z banerem (Tylko Admin)")
+@discord.app_commands.describe(obrazek_url="Opcjonalny link do grafiki opinii")
 async def wyslij_opinie(interaction: discord.Interaction, obrazek_url: str = None):
     if not interaction.user.guild_permissions.administrator:
         await interaction.response.send_message("❌ Brak uprawnień!", ephemeral=True)
@@ -581,16 +608,15 @@ async def wyslij_opinie(interaction: discord.Interaction, obrazek_url: str = Non
         description="Kliknij poniższy przycisk, aby wystawić opinię o zamówieniu.", 
         color=discord.Color.blurple()
     )
-    
-    banner = obrazek_url if obrazek_url else "https://i.imgur.com/kv9wr5k.jpg"
-    embed.set_image(url=banner)
+    if obrazek_url:
+        embed.set_image(url=obrazek_url)
         
     await interaction.channel.send(embed=embed, view=OpiniePanelView())
-    await interaction.response.send_message("✅ Wysłano panel opinii Hakerolandii!", ephemeral=True)
+    await interaction.response.send_message("✅ Wysłano panel opinii!", ephemeral=True)
 
 
-@bot.tree.command(name="wyslij-weryfikacje", description="Wysyła weryfikację CAPTCHA z automatycznym banerem (Tylko Admin)")
-@discord.app_commands.describe(obrazek_url="Opcjonalny własny link (URL) do grafiki weryfikacji")
+@bot.tree.command(name="wyslij-weryfikacje", description="Wysyła weryfikację CAPTCHA z banerem (Tylko Admin)")
+@discord.app_commands.describe(obrazek_url="Opcjonalny link do grafiki weryfikacji")
 async def wyslij_weryfikacje(interaction: discord.Interaction, obrazek_url: str = None):
     if not interaction.user.guild_permissions.administrator:
         await interaction.response.send_message("❌ Brak uprawnień!", ephemeral=True)
@@ -601,9 +627,8 @@ async def wyslij_weryfikacje(interaction: discord.Interaction, obrazek_url: str 
         description="Kliknij przycisk poniżej, aby pomyślnie zweryfikować swoje konto.", 
         color=discord.Color.gold()
     )
-    
-    banner = obrazek_url if obrazek_url else "https://i.imgur.com/kv9wr5k.jpg"
-    embed.set_image(url=banner)
+    if obrazek_url:
+        embed.set_image(url=obrazek_url)
         
     await interaction.channel.send(embed=embed, view=CaptchaView())
     await interaction.response.send_message("✅ Wysłano weryfikację!", ephemeral=True)
@@ -628,13 +653,38 @@ async def kod_losuj(interaction: discord.Interaction):
     znizka = random.randint(5, 20)
     kod = "PROMO-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
     AKTYWNE_KODY[kod] = znizka
-    await interaction.response.send_message(f"🎲 Wylosowano kod w Hakerolandii: `{kod}` | Zniżka: **-{znizka}%**", ephemeral=True)
+    await interaction.response.send_message(f"🎲 Wylosowano kod: `{kod}` | Zniżka: **-{znizka}%**", ephemeral=True)
 
 
-@bot.tree.command(name="cennik", description="Wyświetla oficjalny cennik Hakerolandia")
+@bot.tree.command(name="cennik", description="Wyświetla CENNIK HAKEROLANDIA (widoczny tylko dla Ciebie)")
 async def cennik(interaction: discord.Interaction):
-    embed = discord.Embed(title="📑 HAKEROLANDIA — CENNIK", description="🟢 START (19.99zł)\n🔵 BASIC (39.99zł)\n🟣 PREMIUM (69.99zł)\n🤖 BOT NA ZAMÓWIENIE (35.99zł)", color=discord.Color.blurple())
-    await interaction.response.send_message(embed=embed)
+    embed = discord.Embed(
+        title="🛒 CENNIK HAKEROLANDIA",
+        description="> *Oficjalne ceny i pakiety dostępne w Hakerolandii:*",
+        color=0x2b2d31
+    )
+    embed.add_field(
+        name="🟢 PAKIET START",
+        value="> **Cena:** `19.99 PLN`\n> • Podstawowy zestaw usług\n> • Szybka realizacja zamówienia",
+        inline=False
+    )
+    embed.add_field(
+        name="🔵 PAKIET BASIC",
+        value="> **Cena:** `39.99 PLN`\n> • Rozszerzony pakiet opcji\n> • Priorytet w kolejce realizacji",
+        inline=False
+    )
+    embed.add_field(
+        name="🟣 PAKIET PREMIUM",
+        value="> **Cena:** `69.99 PLN`\n> • Pełny pakiet VIP\n> • Najwyższy priorytet realizacji",
+        inline=False
+    )
+    embed.add_field(
+        name="🤖 BOT NA ZAMÓWIENIE",
+        value="> **Cena:** `35.99 PLN`\n> • Indywidualny bot pod Twoje preferencje",
+        inline=False
+    )
+    embed.set_footer(text="Hakerolandia • Płatności: BLIK / Revolut / Tipply 💎")
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 @bot.tree.command(name="opinie", description="Otwiera panel wystawiania opinii")
