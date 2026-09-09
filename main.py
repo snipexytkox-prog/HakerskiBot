@@ -230,7 +230,7 @@ class OpiniePanelView(ui.View):
 
 
 # ==============================================================================
-# 3. FORMULARZ ZAMÓWIENIA (MODAL)
+# 3. FORMULARZ ZAMÓWIENIA & CENNIK (MODALS & VIEWS)
 # ==============================================================================
 class ZamowienieModal(ui.Modal, title="HAKEROLANDIA — FORMULARZ ZAMÓWIENIA"):
     def __init__(self, produkt: str, cena_jednostkowa: float, ilosc: int):
@@ -353,6 +353,48 @@ class WyborProduktuSelectView(ui.View):
         await interaction.response.send_message(f"🛒 Wybrałeś pakiet: **{dane[0]}** ({dane[1]} PLN/szt.). Wybierz ilość:", view=WyborIlosciSelectView(produkt=dane[0], cena=float(dane[1])), ephemeral=True)
 
 
+# Uniwersalna funkcja generująca embed cennika (używana w przyciskach i komendach)
+def stworz_embed_cennika():
+    embed = discord.Embed(
+        title="🛒 CENNIK HAKEROLANDIA",
+        description="> *Oficjalne ceny i pakiety dostępne w Hakerolandii:*",
+        color=0x2b2d31
+    )
+    embed.add_field(
+        name="🟢 PAKIET START",
+        value="> **Cena:** `19.99 PLN`\n> • Podstawowy zestaw usług\n> • Szybka realizacja zamówienia",
+        inline=False
+    )
+    embed.add_field(
+        name="🔵 PAKIET BASIC",
+        value="> **Cena:** `39.99 PLN`\n> • Rozszerzony pakiet opcji\n> • Priorytet w kolejce realizacji",
+        inline=False
+    )
+    embed.add_field(
+        name="🟣 PAKIET PREMIUM",
+        value="> **Cena:** `69.99 PLN`\n> • Pełny pakiet VIP\n> • Najwyższy priorytet realizacji",
+        inline=False
+    )
+    embed.add_field(
+        name="🤖 BOT NA ZAMÓWIENIE",
+        value="> **Cena:** `35.99 PLN`\n> • Indywidualny bot pod Twoje preferencje",
+        inline=False
+    )
+    embed.set_footer(text="Hakerolandia • Płatności: BLIK / Revolut / Tipply 💎")
+    return embed
+
+
+# Samodzielny Panel Cennika (styl Dzik Shop ze zdjęcia)
+class CennikPanelView(ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @ui.button(label="Cennik", style=discord.ButtonStyle.secondary, custom_id="btn_hakerolandia_standalone_cennik", emoji="📋")
+    async def pokaz_cennik_btn(self, interaction: discord.Interaction, button: ui.Button):
+        await interaction.response.send_message(embed=stworz_embed_cennika(), ephemeral=True)
+
+
+# Główny Panel Sklepu z przyciskiem cennika
 class PanelGlownyView(ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -362,34 +404,8 @@ class PanelGlownyView(ui.View):
         await interaction.response.send_message(f"🛒 Wybierz interesujący Cię pakiet w Hakerolandii:", view=WyborProduktuSelectView(), ephemeral=True)
 
     @ui.button(label="CENNIK", style=discord.ButtonStyle.blurple, custom_id="btn_hakerolandia_pokaz_cennik", emoji="📋")
-    async def pokaz_cennik_btn(self, interaction: discord.Interaction, button: ui.Button):
-        embed = discord.Embed(
-            title="🛒 CENNIK HAKEROLANDIA",
-            description="> *Oficjalne ceny i pakiety dostępne w Hakerolandii:*",
-            color=0x2b2d31
-        )
-        embed.add_field(
-            name="🟢 PAKIET START",
-            value="> **Cena:** `19.99 PLN`\n> • Podstawowy zestaw usług\n> • Szybka realizacja zamówienia",
-            inline=False
-        )
-        embed.add_field(
-            name="🔵 PAKIET BASIC",
-            value="> **Cena:** `39.99 PLN`\n> • Rozszerzony pakiet opcji\n> • Priorytet w kolejce realizacji",
-            inline=False
-        )
-        embed.add_field(
-            name="🟣 PAKIET PREMIUM",
-            value="> **Cena:** `69.99 PLN`\n> • Pełny pakiet VIP\n> • Najwyższy priorytet realizacji",
-            inline=False
-        )
-        embed.add_field(
-            name="🤖 BOT NA ZAMÓWIENIE",
-            value="> **Cena:** `35.99 PLN`\n> • Indywidualny bot pod Twoje preferencje",
-            inline=False
-        )
-        embed.set_footer(text="Hakerolandia • Płatności: BLIK / Revolut / Tipply 💎")
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+    async def pokaz_cennik_glownego_panelu(self, interaction: discord.Interaction, button: ui.Button):
+        await interaction.response.send_message(embed=stworz_embed_cennika(), ephemeral=True)
 
 
 class YouTubeButtonView(ui.View):
@@ -414,6 +430,7 @@ class HakerolandiaBot(commands.Bot):
     async def setup_hook(self):
         logger.info("Ładowanie stałych widoków Hakerolandia...")
         self.add_view(PanelGlownyView())
+        self.add_view(CennikPanelView())
         self.add_view(CaptchaView())
         self.add_view(OpiniePanelView())
         self.add_view(StronaButtonView())
@@ -596,6 +613,25 @@ async def wyslij_panel(interaction: discord.Interaction, obrazek_url: str = None
     await interaction.response.send_message("✅ Wysłano główny panel sklepu!", ephemeral=True)
 
 
+@bot.tree.command(name="wyslij-cennik", description="Wysyła samodzielny panel Cennika w stylu Dzik Shop (Tylko Admin)")
+@discord.app_commands.describe(obrazek_url="Opcjonalny link do banera cennika")
+async def wyslij_cennik_panel(interaction: discord.Interaction, obrazek_url: str = None):
+    if not interaction.user.guild_permissions.administrator:
+        await interaction.response.send_message("❌ Brak uprawnień!", ephemeral=True)
+        return
+
+    embed = discord.Embed(
+        title="HAKEROLANDIA — CENNIK",
+        description="> W tym miejscu możesz przeglądać **cennik wszystkich produktów** dostępnych w naszym sklepie.\n>\n> Chcesz zobaczyć cennik? — Użyj tego przycisku aby zobaczyć produkty.",
+        color=0x2b2d31
+    )
+    if obrazek_url:
+        embed.set_image(url=obrazek_url)
+
+    await interaction.channel.send(embed=embed, view=CennikPanelView())
+    await interaction.response.send_message("✅ Wysłano panel Cennika w stylu Dzik Shop!", ephemeral=True)
+
+
 @bot.tree.command(name="wyslij-opinie", description="Wysyła panel wystawiania opinii z banerem (Tylko Admin)")
 @discord.app_commands.describe(obrazek_url="Opcjonalny link do grafiki opinii")
 async def wyslij_opinie(interaction: discord.Interaction, obrazek_url: str = None):
@@ -658,33 +694,7 @@ async def kod_losuj(interaction: discord.Interaction):
 
 @bot.tree.command(name="cennik", description="Wyświetla CENNIK HAKEROLANDIA (widoczny tylko dla Ciebie)")
 async def cennik(interaction: discord.Interaction):
-    embed = discord.Embed(
-        title="🛒 CENNIK HAKEROLANDIA",
-        description="> *Oficjalne ceny i pakiety dostępne w Hakerolandii:*",
-        color=0x2b2d31
-    )
-    embed.add_field(
-        name="🟢 PAKIET START",
-        value="> **Cena:** `19.99 PLN`\n> • Podstawowy zestaw usług\n> • Szybka realizacja zamówienia",
-        inline=False
-    )
-    embed.add_field(
-        name="🔵 PAKIET BASIC",
-        value="> **Cena:** `39.99 PLN`\n> • Rozszerzony pakiet opcji\n> • Priorytet w kolejce realizacji",
-        inline=False
-    )
-    embed.add_field(
-        name="🟣 PAKIET PREMIUM",
-        value="> **Cena:** `69.99 PLN`\n> • Pełny pakiet VIP\n> • Najwyższy priorytet realizacji",
-        inline=False
-    )
-    embed.add_field(
-        name="🤖 BOT NA ZAMÓWIENIE",
-        value="> **Cena:** `35.99 PLN`\n> • Indywidualny bot pod Twoje preferencje",
-        inline=False
-    )
-    embed.set_footer(text="Hakerolandia • Płatności: BLIK / Revolut / Tipply 💎")
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    await interaction.response.send_message(embed=stworz_embed_cennika(), ephemeral=True)
 
 
 @bot.tree.command(name="opinie", description="Otwiera panel wystawiania opinii")
